@@ -5,23 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
   <title>Caja de Ritmos + Partitura · Musicala</title>
-  <meta name="description" content="Caja de ritmos pedagógica con rejilla por pasos y partitura rítmica generada." />
+  <meta name="description" content="Caja de ritmos pedagógica con rejilla por pasos y partitura rítmica generada con VexFlow." />
   <meta name="theme-color" content="#ffffff" />
   <meta name="color-scheme" content="light" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
 
-  <!-- Fuente opcional -->
+  <!-- iOS / PWA (opcional: deja listo para futuro) -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <!-- <link rel="manifest" href="./manifest.webmanifest" /> -->
+  <!-- <link rel="icon" href="./icons/icon-192.png" sizes="192x192" /> -->
+  <!-- <link rel="apple-touch-icon" href="./icons/icon-192.png" /> -->
+
+  <!-- Fuente (con preload para menos FOUT) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <!-- CSS del proyecto (según tu árbol: /css/styles.css) -->
+  <!-- CSS del proyecto -->
   <link rel="stylesheet" href="./css/styles.css" />
+
+  <!-- Fallback mínimo por si tu CSS no carga/está incompleto -->
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #fff;
+      color: #0f172a;
+    }
+
+    /* Notación VexFlow: contenedor scrolleable si el SVG queda ancho */
+    #notation { width: 100%; overflow-x: auto; overflow-y: hidden; }
+    #notation svg { display: block; height: auto; }
+
+    /* A11y */
+    .sr-only{
+      position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+      overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+    }
+
+    /* Fallback suave para evitar layout raro si styles.css no está */
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+    .panel { margin-top: 16px; }
+    .notation-card { border-radius: 16px; padding: 12px; border: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.8); }
+  </style>
 </head>
 
 <body>
   <main id="app" class="wrap">
     <!-- Header -->
-    <header class="app-header">
+    <header class="app-header" role="banner">
       <img class="app-logo" src="./assets/logo.png" alt="Musicala" />
       <div class="app-header__text">
         <h1 class="app-title">Caja de ritmos 🥁</h1>
@@ -32,9 +68,11 @@
     <!-- Toolbar -->
     <section class="toolbar" aria-label="Controles de reproducción">
       <div class="toolbar__group">
-        <button id="playBtn" class="btn primary" type="button">▶ Reproducir</button>
+        <button id="playBtn" class="btn primary" type="button" aria-pressed="false">
+          ▶ Reproducir
+        </button>
 
-        <span class="label">BPM</span>
+        <label class="label" for="bpmInput">BPM</label>
         <input
           id="bpmInput"
           class="input input--bpm"
@@ -44,64 +82,80 @@
           step="1"
           value="90"
           inputmode="numeric"
+          autocomplete="off"
+          aria-describedby="bpmHelp"
         />
+        <span id="bpmHelp" class="sr-only">BPM entre 40 y 240</span>
 
-        <button id="clearBtn" class="btn" type="button">Limpiar</button>
+        <button id="clearBtn" class="btn" type="button">
+          Limpiar
+        </button>
       </div>
 
-      <div class="toolbar__group">
+      <div class="toolbar__group" aria-label="Presets">
         <button id="rockBtn" class="btn" type="button">Ritmo rock</button>
         <button id="funkBtn" class="btn" type="button">Ritmo funk</button>
       </div>
 
-      <div class="toolbar__spacer"></div>
+      <div class="toolbar__spacer" aria-hidden="true"></div>
 
-      <!-- Opcional: si luego quieres status -->
       <div id="statusText" class="label" aria-live="polite"></div>
     </section>
 
     <!-- Panel Grid -->
-    <section class="panel">
+    <section class="panel" aria-label="Rejilla de batería">
       <h2 class="panel__title">Rejilla</h2>
       <p class="panel__subtitle">16 pasos (semicorcheas) · 1 compás 4/4</p>
 
       <div class="grid-wrap">
-        <!-- OJO: ID es lo que app.js necesita; class es lo que styles.css estiliza -->
-        <div id="drumGrid" class="drum-grid"></div>
+        <div
+          id="drumGrid"
+          class="drum-grid"
+          role="application"
+          aria-label="Rejilla por pasos"
+          aria-describedby="a11yHint"
+        ></div>
       </div>
     </section>
 
     <!-- Panel Notación -->
-    <section class="panel">
-      <h2 class="panel__title">Partitura (vista generada)</h2>
+    <section class="panel" aria-label="Partitura generada">
+      <h2 class="panel__title">Partitura (VexFlow)</h2>
+      <p class="panel__subtitle">Se actualiza solo cuando cambias el patrón.</p>
+
       <div id="notationWrap" class="notation-card">
-        <svg id="notation" viewBox="0 0 1040 220" preserveAspectRatio="xMidYMid meet"></svg>
+        <!-- IMPORTANTÍSIMO:
+             Esto debe ser un DIV. VexFlow crea su SVG adentro. -->
+        <div id="notation" role="img" aria-label="Partitura"></div>
       </div>
     </section>
+
+    <p class="sr-only" id="a11yHint">
+      Usa la rejilla para activar o desactivar golpes. La partitura se actualiza automáticamente.
+    </p>
+
+    <!-- Si el usuario tiene JS apagado (pasa, increíblemente) -->
+    <noscript>
+      <p style="padding:12px;border:1px solid rgba(15,23,42,.15);border-radius:12px;">
+        Esta herramienta necesita JavaScript para funcionar.
+      </p>
+    </noscript>
   </main>
 
-  <!-- 1) Tone.js (debe existir antes de audio.js) -->
+  <!-- Vendor (cargan antes de tus módulos) -->
+  <!-- Tone.js (audio) -->
   <script src="https://unpkg.com/tone@14.7.77/build/Tone.js" defer></script>
 
-  <!-- 2) Utilidades (opcional pero útil) -->
+  <!-- VexFlow (notación) -->
+  <script src="https://unpkg.com/vexflow@4.2.5/build/cjs/vexflow.js" defer></script>
+
+  <!-- App scripts (orden lógico de dependencias) -->
   <script src="./js/utils.js" defer></script>
-
-  <!-- 3) Estado (OBLIGATORIO antes de presets/grid/audio/app) -->
   <script src="./js/state.js" defer></script>
-
-  <!-- 4) Presets (usa state para apply) -->
   <script src="./js/presets.js" defer></script>
-
-  <!-- 5) UI Grid -->
   <script src="./js/grid.js" defer></script>
-
-  <!-- 6) Notación (esto hoy está MAL en tu proyecto, ver abajo) -->
   <script src="./js/notation.js" defer></script>
-
-  <!-- 7) Audio -->
   <script src="./js/audio.js" defer></script>
-
-  <!-- 8) App orquestadora -->
   <script src="./js/app.js" defer></script>
 </body>
 </html>
