@@ -2,13 +2,13 @@
 
 /* =========================================================
    drum-box /js/app.js
-   Orquestador principal (pulido / v1.3)
+   Orquestador principal (pulido / v1.4)
    ---------------------------------------------------------
-   Meta: MISMAS funciones, mejor performance + claridad.
-   - Menos renders innecesarios (especialmente notación)
-   - Menos dependencia repetitiva de window.*
-   - Usa DrumUtils si existe (clamp/debounce/rafThrottle/deepClone)
-   - BPM: update suave + setBpm con debounce si está sonando
+   Ajustes clave:
+   - Notación (VexFlow) renderiza en <div id="notation"></div>
+   - Notación NO renderiza por tick de playhead
+   - Notación renderiza solo si cambia el patrón (patternRevision),
+     con fallback a firma si no existe patternRevision.
 ========================================================= */
 
 (function () {
@@ -18,7 +18,6 @@
   const Utils = window.DrumUtils || null;
 
   const $ = Utils?.$ || ((sel, root = document) => root.querySelector(sel));
-
   const clamp = Utils?.clamp || ((n, min, max) => Math.max(min, Math.min(max, Number(n))));
 
   const deepClone = Utils?.deepClone || ((obj) => {
@@ -94,14 +93,20 @@
     funkBtn: $('#funkBtn'),
     statusText: $('#statusText') || $('#status') || null,
     gridRoot: $('#drumGrid'),
-    notationSvg: $('#notation'),
+    notationRoot: $('#notation'), // ✅ ahora es DIV contenedor (VexFlow crea SVG dentro)
   };
 
-  const required = ['playBtn', 'bpmInput', 'clearBtn', 'rockBtn', 'funkBtn', 'gridRoot', 'notationSvg'];
+  const required = ['playBtn', 'bpmInput', 'clearBtn', 'rockBtn', 'funkBtn', 'gridRoot', 'notationRoot'];
   const missing = required.filter(k => !els[k]);
   if (missing.length) {
     console.error('[app.js] Faltan elementos en el HTML:', missing);
     return;
+  }
+
+  // Guard: si alguien dejó <svg id="notation">, avisamos.
+  // VexFlow espera un contenedor normal; un SVG directo suele dar renders raros/vacíos.
+  if (els.notationRoot && els.notationRoot.tagName?.toLowerCase() === 'svg') {
+    console.warn('[app.js] #notation es <svg>. Para VexFlow debería ser <div id="notation"></div>.');
   }
 
   // -----------------------------
@@ -112,18 +117,48 @@
     syncGridPlayhead();
   });
 
-  // OJO: Notación NO debe renderizarse en cada step (pesado e inútil).
-  // Solo cuando cambia el patrón / preset / clear.
+  // -----------------------------
+  // Notación: solo cuando cambie el patrón
+  // -----------------------------
+  let notationInitialized = false;
+  let lastPatternRev = -1;
+  let lastPatternSig = '';
+
+  function patternSignatureFallback(s) {
+    // Si no hay patternRevision, hacemos firma simple.
+    // (No es perfecto, pero evita renders inútiles)
+    const p = s?.pattern || {};
+    const hh = Array.isArray(p.hh) ? p.hh : [];
+    const sn = Array.isArray(p.sn) ? p.sn : [];
+    const bd = Array.isArray(p.bd) ? p.bd : [];
+    const steps = Number.isFinite(Number(s?.steps)) ? Number(s.steps) : 16;
+
+    const pack = (arr) => {
+      let out = '';
+      for (let i = 0; i < steps; i++) if (arr[i]) out += i + ',';
+      return out;
+    };
+
+    return `hh:${pack(hh)}|sn:${pack(sn)}|bd:${pack(bd)}|steps:${steps}`;
+  }
+
   const renderNotation = rafThrottle(() => {
     const s = stateGet();
 
-    if (typeof Notation.render === 'function') {
-      // Soporta firma render(svgEl, state) o render(state)
-      if (Notation.render.length >= 2) Notation.render(els.notationSvg, s);
-      else Notation.render(s);
-      return;
+    const rev = Number(s.patternRevision ?? NaN);
+    if (Number.isFinite(rev)) {
+      if (rev === lastPatternRev) return;
+      lastPatternRev = rev;
+    } else {
+      const sig = patternSignatureFallback(s);
+      if (sig === lastPatternSig) return;
+      lastPatternSig = sig;
     }
 
+    if (typeof Notation.render === 'function') {
+      Notation.render(s);
+      return;
+    }
     if (typeof Notation.refreshFromState === 'function') {
       Notation.refreshFromState(s);
       return;
@@ -135,14 +170,18 @@
   // -----------------------------
   // Notation lifecycle
   // -----------------------------
-  let notationInitialized = false;
-
   function initNotationIfNeeded() {
     if (notationInitialized) return;
 
     if (typeof Notation.init === 'function') {
-      Notation.init(els.notationSvg, stateGet(), { onRender() {} });
+      // ✅ init recibe el contenedor, NO un <svg>
+      Notation.init(els.notationRoot, stateGet());
       notationInitialized = true;
+
+      // fuerza primer render
+      lastPatternRev = -1;
+      lastPatternSig = '';
+      renderNotation();
       return;
     }
 
@@ -168,7 +207,6 @@
         renderUI();
       },
       onChange() {
-        // Por si grid emite cambios más amplios
         renderNotation();
         renderUI();
       },
@@ -251,12 +289,12 @@
     }
 
     // Sync tempo con audio (si existe)
-    try {
-      if (typeof Audio.setBpm === 'function') Audio.setBpm(stateGet().bpm);
-    } catch (_) {}
+    try { if (typeof Audio.setBpm === 'function') Audio.setBpm(stateGet().bpm); } catch (_) {}
 
-    // Sync UI
+    // Sync UI + notación
     syncGridFromState();
+    lastPatternRev = -1;
+    lastPatternSig = '';
     renderNotation();
     renderUI();
   }
@@ -275,6 +313,8 @@
     }
 
     syncGridFromState();
+    lastPatternRev = -1;
+    lastPatternSig = '';
     renderNotation();
     renderUI();
   }
@@ -296,7 +336,7 @@
         // Playhead + status (NO notación)
         renderUI();
       }
-    }, 33); // ~30fps suficiente para playhead, menos CPU
+    }, 33);
   }
 
   function stopPollingFallback() {
@@ -309,9 +349,7 @@
     if (typeof Audio.setOnStep !== 'function') return;
 
     Audio.setOnStep((stepIndex) => {
-      // audio.js usualmente ya setea currentStep, pero lo garantizamos
       stateSet({ currentStep: stepIndex });
-      // Solo UI (notación NO cambia por playhead)
       renderUI();
     });
   }
@@ -321,15 +359,12 @@
 
     try {
       if (!s.isPlaying) {
-        // BPM al iniciar
         if (typeof Audio.setBpm === 'function') Audio.setBpm(Number(s.bpm));
-
         if (typeof Audio.start === 'function') await Audio.start();
         else throw new Error('audio.js no expone start()');
 
         stateSet({ isPlaying: true });
 
-        // Si no hay callback, fallback polling
         if (typeof Audio.setOnStep !== 'function') startPollingFallback();
       } else {
         if (typeof Audio.stop === 'function') Audio.stop();
@@ -343,9 +378,6 @@
       stopPollingFallback();
       stateSet({ isPlaying: false, currentStep: -1 });
       renderUI();
-
-      // Mantengo alert porque es la única forma de decirle al usuario “toca click” (autoplay policy),
-      // pero sin dramatismo.
       alert(`No se pudo iniciar el audio.\n\n${err?.message || err}`);
     }
   }
@@ -354,9 +386,7 @@
   // BPM handling (pulido)
   // -----------------------------
   const setBpmToAudioDebounced = debounce((value) => {
-    try {
-      if (typeof Audio.setBpm === 'function') Audio.setBpm(value);
-    } catch (_) {}
+    try { if (typeof Audio.setBpm === 'function') Audio.setBpm(value); } catch (_) {}
   }, 120);
 
   function onBpmInput() {
@@ -365,9 +395,8 @@
 
     const value = clamp(raw, 40, 240);
     stateSet({ bpm: value });
-    syncToolbarFromState(); // inmediato
+    syncToolbarFromState();
 
-    // Si está sonando, actualiza tempo sin spamear
     if (stateGet().isPlaying) setBpmToAudioDebounced(value);
   }
 
@@ -376,9 +405,7 @@
     stateSet({ bpm: value });
     els.bpmInput.value = value;
 
-    try {
-      if (typeof Audio.setBpm === 'function') Audio.setBpm(value);
-    } catch (_) {}
+    try { if (typeof Audio.setBpm === 'function') Audio.setBpm(value); } catch (_) {}
 
     renderUI();
   }
@@ -406,7 +433,7 @@
     if (initialized) return;
     initialized = true;
 
-    // Asegurar forma mínima (sin pelear con state.js)
+    // Asegurar forma mínima
     stateUpdate((draft) => {
       if (typeof draft.bpm !== 'number') draft.bpm = 90;
       if (typeof draft.isPlaying !== 'boolean') draft.isPlaying = false;
@@ -427,6 +454,8 @@
     if (!hasAnyStep && Presets) {
       applyPreset('rock');
     } else {
+      lastPatternRev = -1;
+      lastPatternSig = '';
       renderNotation();
       renderUI();
     }
@@ -434,7 +463,7 @@
     console.log('[app.js] Inicializado ✅');
   }
 
-  // Debug útil (no cambia UX)
+  // Debug útil
   window.DrumApp = {
     init,
     getState: stateGet,
