@@ -1,0 +1,780 @@
+/* =========================================================
+   drum-box /css/styles.css
+   Caja de ritmos online (pulido / v1.2)
+   ---------------------------------------------------------
+   Sin meter “más funciones”, solo mejor UI/UX:
+   - Tokens más consistentes + sombras/contraste más finos
+   - Accesibilidad: focus más claro, hit-area, reduce motion
+   - Grid más robusta (scroll, sticky labels opcional, soporta steps variables)
+   - Tipografía y spacing más “pro”
+========================================================= */
+
+:root{
+  /* Base */
+  --bg: #f5f6fa;
+  --panel: #ffffff;
+  --panel-soft: #fbfbfe;
+  --line: #d9dde6;
+  --line-soft: #eaedf4;
+  --text: #18233a;
+  --muted: #6b7280;
+
+  /* Brand / estado */
+  --brand: #0c41c4;
+  --brand-soft: #eef3ff;
+  --brand-line: #c9d8ff;
+
+  --ok: #6cab43;
+  --ok-soft: #eff8e8;
+  --warn: #f4d56c;
+  --warn-soft: #fff8df;
+  --danger: #ef4444;
+
+  /* Grid subdivisiones */
+  --step-bg: #ffffff;
+  --step-border: #d7dbe4;
+  --step-semi-border: #e4e8f0;
+  --step-eighth-border: #cfd5e1;
+  --step-quarter-border: #bcc4d4;
+
+  --pulse-band: rgba(12, 65, 196, 0.025);
+  --pulse-band-alt: rgba(12, 65, 196, 0.055);
+
+  /* Elevación */
+  --radius: 12px;
+  --shadow-sm: 0 1px 0 rgba(0,0,0,.03);
+  --shadow-md: 0 10px 30px rgba(20, 33, 61, .06);
+  --shadow-lg: 0 18px 44px rgba(20, 33, 61, .10);
+
+  /* Layout de rejilla */
+  --label-col: 180px;
+  --step-size: 38px;
+  --step-gap: 6px;
+
+  /* Focus ring */
+  --focus: rgba(12,65,196,.22);
+  --focus-strong: rgba(12,65,196,.32);
+
+  /* Scrollbar */
+  --scrollbar: rgba(15,23,42,.16);
+  --scrollbar-hover: rgba(15,23,42,.26);
+}
+
+/* =========================
+   Reset / base
+========================= */
+*,
+*::before,
+*::after{
+  box-sizing: border-box;
+}
+
+html, body{
+  margin: 0;
+  padding: 0;
+}
+
+html{
+  color-scheme: light;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+}
+
+body{
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.35;
+}
+
+button,
+input,
+select{
+  font: inherit;
+  color: inherit;
+}
+
+img{
+  display: block;
+  max-width: 100%;
+}
+
+[hidden]{
+  display: none !important;
+}
+
+::selection{
+  background: rgba(12,65,196,.14);
+}
+
+/* Scrollbar suave (Chromium/WebKit) */
+*::-webkit-scrollbar{ height: 10px; width: 10px; }
+*::-webkit-scrollbar-thumb{
+  background: var(--scrollbar);
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.75);
+}
+*::-webkit-scrollbar-thumb:hover{ background: var(--scrollbar-hover); }
+*::-webkit-scrollbar-track{ background: transparent; }
+
+/* =========================
+   Layout general
+========================= */
+.wrap,
+.container{
+  width: min(1200px, calc(100% - 32px));
+  margin-inline: auto;
+  padding: 24px 0 32px;
+}
+
+/* =========================
+   Header / branding
+========================= */
+.app-header{
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.app-logo{
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.app-header__text{
+  min-width: 0;
+}
+
+.app-title{
+  margin: 0;
+  font-size: clamp(1.7rem, 2.2vw + 1rem, 2.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.app-subtitle{
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* =========================
+   Toolbar
+========================= */
+.toolbar{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 14px 0 16px;
+}
+
+.toolbar__group{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar__spacer{
+  flex: 1 1 auto;
+}
+
+.label{
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+/* =========================
+   Botones / inputs
+========================= */
+.btn,
+.input,
+.select{
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  transition: background-color .15s ease, border-color .15s ease, transform .06s ease, box-shadow .15s ease;
+}
+
+.btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:hover{
+  border-color: #c9cfdb;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(0,0,0,.03), 0 6px 16px rgba(20, 33, 61, .06);
+}
+
+.btn:active{
+  transform: translateY(1px);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"]{
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible,
+.input:focus-visible,
+.select:focus-visible{
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-color: var(--brand);
+}
+
+.btn.primary{
+  background: var(--brand-soft);
+  border-color: var(--brand-line);
+  color: var(--brand);
+}
+
+.btn.primary:hover{
+  background: #e8efff;
+  border-color: #b9ccff;
+}
+
+.btn.is-playing{
+  background: var(--warn-soft);
+  border-color: #efd16f;
+  color: #7a5a05;
+}
+
+.btn.ghost{
+  background: transparent;
+}
+
+.btn.small{
+  min-height: 38px;
+  padding-inline: 10px;
+  font-size: .92rem;
+  border-radius: 10px;
+}
+
+.input{
+  padding: 0 12px;
+  width: 94px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.input.input--bpm{
+  width: 84px;
+}
+
+.select{
+  padding: 0 12px;
+  min-width: 110px;
+  background-color: #fff;
+}
+
+/* =========================
+   Panel principal
+========================= */
+.panel{
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+  padding: 14px;
+}
+
+.panel + .panel{
+  margin-top: 14px;
+}
+
+.panel__title{
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #22304d;
+}
+
+.panel__subtitle{
+  margin: -4px 0 10px;
+  color: var(--muted);
+  font-size: .92rem;
+}
+
+/* =========================
+   Rejilla editor
+========================= */
+.grid-wrap{
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 14px;
+}
+
+/* Contenedor general de editor
+   Nota: grid.js fija 16 columnas, pero esto aguanta si mañana cambian steps.
+*/
+.drum-grid{
+  min-width: calc(var(--label-col) + (var(--step-size) * 16) + (var(--step-gap) * 15));
+  display: grid;
+  grid-template-columns: var(--label-col) repeat(16, var(--step-size));
+  gap: var(--step-gap);
+  align-items: center;
+  position: relative;
+  padding: 6px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,.30));
+  border: 1px solid rgba(15,23,42,.06);
+}
+
+/* Sticky label opcional (no depende de JS) */
+.drum-grid .grid-count-label,
+.drum-grid .row-label{
+  position: sticky;
+  left: 6px;
+  z-index: 3;
+  background: linear-gradient(90deg, rgba(245,246,250,1), rgba(245,246,250,.92) 70%, rgba(245,246,250,0));
+  backdrop-filter: blur(6px);
+}
+
+/* Fila de encabezados de conteo */
+.grid-count-label{
+  text-align: right;
+  padding-right: 10px;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .92rem;
+  user-select: none;
+  border-radius: 10px;
+}
+
+/* Conteo */
+.grid-count{
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7b8394;
+  user-select: none;
+  border: 1px solid transparent;
+}
+
+/* Diferenciación visual de conteo */
+.grid-count.count--quarter{
+  color: #465066;
+  background: rgba(12,65,196,.05);
+  border-color: rgba(12,65,196,.08);
+}
+
+.grid-count.count--eighth{
+  color: #647085;
+}
+
+.grid-count.count--sixteenth{
+  color: #98a0af;
+  font-weight: 600;
+}
+
+.grid-count.is-current{
+  background: rgba(244,213,108,.28);
+  border-color: rgba(244,213,108,.65);
+  color: rgba(122,90,5,.95);
+}
+
+/* Etiquetas de fila */
+.row-label{
+  text-align: right;
+  padding-right: 10px;
+  font-weight: 700;
+  color: #26324a;
+  user-select: none;
+  white-space: nowrap;
+  border-radius: 10px;
+}
+
+.row-label small{
+  display: block;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* Paso base */
+.step{
+  position: relative;
+  width: var(--step-size);
+  height: var(--step-size);
+  border-radius: 10px; /* antes 0: se ve más “premium” sin perder lectura */
+  border: 1px solid var(--step-border);
+  background: var(--step-bg);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background-color .10s ease, border-color .10s ease, box-shadow .10s ease, transform .05s ease;
+  user-select: none;
+  padding: 0;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.step:hover{
+  border-color: #bfc7d6;
+  background: #fcfcff;
+}
+
+.step:active{
+  transform: scale(.985);
+}
+
+.step:focus-visible{
+  outline: 3px solid var(--focus-strong);
+  outline-offset: 1px;
+  z-index: 4;
+}
+
+/* Jerarquía de subdivisiones */
+.step--quarter{
+  border-color: var(--step-quarter-border);
+  box-shadow: inset 0 0 0 1px rgba(12,65,196,.04);
+}
+
+.step--eighth{
+  border-color: var(--step-eighth-border);
+}
+
+.step--sixteenth{
+  border-color: var(--step-semi-border);
+}
+
+/* Bandas de pulso alternadas para leer 1-2-3-4 */
+.step--pulseA{
+  background-image: linear-gradient(var(--pulse-band), var(--pulse-band));
+}
+.step--pulseB{
+  background-image: linear-gradient(var(--pulse-band-alt), var(--pulse-band-alt));
+}
+
+/* Marcador del número de pulso dentro del cuadrito */
+.step.step--beat-marker::after{
+  content: attr(data-beat);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #c2c8d4;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+  pointer-events: none;
+}
+
+/* Paso activo */
+.step.is-active{
+  background: var(--ok);
+  border-color: var(--ok);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.14), 0 6px 14px rgba(108,171,67,.12);
+}
+
+.step.is-active::after{
+  color: rgba(255,255,255,.55);
+}
+
+/* Paso actual (playhead) */
+.step.is-current{
+  outline: 2px solid var(--warn);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.step.is-active.is-current{
+  box-shadow:
+    inset 0 0 0 2px rgba(255,255,255,.40),
+    0 0 0 0 transparent;
+}
+
+/* Variantes futuras (sin usarlas aún) */
+.step.is-accent{
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.75);
+}
+.step.is-ghost{
+  background: #cfe5bd;
+  border-color: #b9d39f;
+}
+
+/* =========================
+   Leyenda
+========================= */
+.legend{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin: 10px 2px 6px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.legend__item{
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend__swatch{
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.legend__swatch--active{
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.legend__swatch--current{
+  background: var(--warn-soft);
+  border-color: var(--warn);
+}
+
+.legend__swatch--quarter{
+  background: rgba(12,65,196,.08);
+  border-color: rgba(12,65,196,.18);
+}
+
+/* =========================
+   Partitura / SVG container
+========================= */
+.notation-block{
+  margin-top: 8px;
+}
+
+.notation-title{
+  margin: 0 0 10px;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #22304d;
+}
+
+.notation-card{
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(0,0,0,.02);
+}
+
+/* SVG responsive */
+.notation-card svg,
+svg#notation{
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* =========================
+   Footer / notas de ayuda
+========================= */
+.foot,
+.helper-text{
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: .92rem;
+}
+
+.helper-text strong{
+  color: #334155;
+}
+
+/* =========================
+   Estados / mensajes
+========================= */
+.status{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--muted);
+  font-size: .92rem;
+}
+
+.status--ok{
+  background: #f4fbef;
+  border-color: #cfe7bc;
+  color: #46672f;
+}
+
+.status--warn{
+  background: #fffaf0;
+  border-color: #f3de99;
+  color: #7a5a05;
+}
+
+.status--error{
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+/* =========================
+   Utilidades pequeñas
+========================= */
+.hidden{ display: none !important; }
+
+.sr-only{
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mono{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* =========================
+   Responsive
+========================= */
+@media (max-width: 900px){
+  :root{
+    --label-col: 136px;
+    --step-size: 34px;
+    --step-gap: 5px;
+  }
+
+  .app-title{
+    font-size: clamp(1.45rem, 5vw, 2rem);
+  }
+
+  .app-logo{
+    width: 44px;
+    height: 44px;
+  }
+
+  .toolbar{
+    gap: 8px;
+  }
+
+  .btn,
+  .input,
+  .select{
+    min-height: 42px;
+    border-radius: 10px;
+  }
+
+  .btn{ padding-inline: 12px; }
+
+  .panel{
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .row-label{ font-size: .95rem; }
+
+  .legend{ font-size: .9rem; }
+}
+
+@media (max-width: 640px){
+  :root{
+    --label-col: 120px;
+    --step-size: 30px;
+    --step-gap: 4px;
+  }
+
+  .wrap,
+  .container{
+    width: min(100%, calc(100% - 18px));
+    padding-top: 16px;
+    padding-bottom: 22px;
+  }
+
+  .app-header{
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .app-logo{
+    width: 40px;
+    height: 40px;
+  }
+
+  .app-subtitle{
+    font-size: .88rem;
+  }
+
+  .toolbar{
+    margin: 10px 0 12px;
+  }
+
+  .label{
+    font-size: .88rem;
+  }
+
+  .input.input--bpm{
+    width: 74px;
+  }
+
+  .row-label{
+    padding-right: 8px;
+    font-size: .9rem;
+  }
+
+  .grid-count{
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .notation-title{
+    font-size: .95rem;
+  }
+
+  .notation-card{
+    padding: 8px;
+  }
+
+  .foot,
+  .helper-text{
+    font-size: .88rem;
+  }
+}
+
+/* =========================
+   Preferencias de movimiento
+========================= */
+@media (prefers-reduced-motion: reduce){
+  *{
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
