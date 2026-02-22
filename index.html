@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="es-CO">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+  <title>Caja de Ritmos + Partitura · Musicala</title>
+  <meta name="description" content="Caja de ritmos pedagógica con rejilla por pasos y partitura rítmica generada." />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="color-scheme" content="light" />
+
+  <!-- Fuente opcional -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- CSS del proyecto (según tu árbol: /css/styles.css) -->
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+
+<body>
+  <main id="app" class="wrap">
+    <!-- Header -->
+    <header class="app-header">
+      <img class="app-logo" src="./assets/logo.png" alt="Musicala" />
+      <div class="app-header__text">
+        <h1 class="app-title">Caja de ritmos 🥁</h1>
+        <p class="app-subtitle">Rejilla por pasos + partitura generada automáticamente.</p>
+      </div>
+    </header>
+
+    <!-- Toolbar -->
+    <section class="toolbar" aria-label="Controles de reproducción">
+      <div class="toolbar__group">
+        <button id="playBtn" class="btn primary" type="button">▶ Reproducir</button>
+
+        <span class="label">BPM</span>
+        <input
+          id="bpmInput"
+          class="input input--bpm"
+          type="number"
+          min="40"
+          max="240"
+          step="1"
+          value="90"
+          inputmode="numeric"
+        />
+
+        <button id="clearBtn" class="btn" type="button">Limpiar</button>
+      </div>
+
+      <div class="toolbar__group">
+        <button id="rockBtn" class="btn" type="button">Ritmo rock</button>
+        <button id="funkBtn" class="btn" type="button">Ritmo funk</button>
+      </div>
+
+      <div class="toolbar__spacer"></div>
+
+      <!-- Opcional: si luego quieres status -->
+      <div id="statusText" class="label" aria-live="polite"></div>
+    </section>
+
+    <!-- Panel Grid -->
+    <section class="panel">
+      <h2 class="panel__title">Rejilla</h2>
+      <p class="panel__subtitle">16 pasos (semicorcheas) · 1 compás 4/4</p>
+
+      <div class="grid-wrap">
+        <!-- OJO: ID es lo que app.js necesita; class es lo que styles.css estiliza -->
+        <div id="drumGrid" class="drum-grid"></div>
+      </div>
+    </section>
+
+    <!-- Panel Notación -->
+    <section class="panel">
+      <h2 class="panel__title">Partitura (vista generada)</h2>
+      <div id="notationWrap" class="notation-card">
+        <svg id="notation" viewBox="0 0 1040 220" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+    </section>
+  </main>
+
+  <!-- 1) Tone.js (debe existir antes de audio.js) -->
+  <script src="https://unpkg.com/tone@14.7.77/build/Tone.js" defer></script>
+
+  <!-- 2) Utilidades (opcional pero útil) -->
+  <script src="./js/utils.js" defer></script>
+
+  <!-- 3) Estado (OBLIGATORIO antes de presets/grid/audio/app) -->
+  <script src="./js/state.js" defer></script>
+
+  <!-- 4) Presets (usa state para apply) -->
+  <script src="./js/presets.js" defer></script>
+
+  <!-- 5) UI Grid -->
+  <script src="./js/grid.js" defer></script>
+
+  <!-- 6) Notación (esto hoy está MAL en tu proyecto, ver abajo) -->
+  <script src="./js/notation.js" defer></script>
+
+  <!-- 7) Audio -->
+  <script src="./js/audio.js" defer></script>
+
+  <!-- 8) App orquestadora -->
+  <script src="./js/app.js" defer></script>
+</body>
+</html>
