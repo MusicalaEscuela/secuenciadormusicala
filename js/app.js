@@ -91,6 +91,23 @@
     clearBtn: $('#clearBtn'),
     rockBtn: $('#rockBtn'),
     funkBtn: $('#funkBtn'),
+    kitSelect: $('#kitSelect'),
+    tomsToggle: $('#tomsToggle'),
+    mixer: $('#mixer'),
+    brushSeg: $('#brushSeg'),
+    meterSelect: $('#meterSelect'),
+    barsSelect: $('#barsSelect'),
+    swingRange: $('#swingRange'),
+    swingPct: $('#swingPct'),
+    metroToggle: $('#metroToggle'),
+    countInToggle: $('#countInToggle'),
+    exportPngBtn: $('#exportPngBtn'),
+    exportWavBtn: $('#exportWavBtn'),
+    presetName: $('#presetName'),
+    savePresetBtn: $('#savePresetBtn'),
+    userPresetSelect: $('#userPresetSelect'),
+    loadPresetBtn: $('#loadPresetBtn'),
+    deletePresetBtn: $('#deletePresetBtn'),
     statusText: $('#statusText') || $('#status') || null,
     gridRoot: $('#drumGrid'),
     notationRoot: $('#notation'), // ✅ ahora es DIV contenedor (VexFlow crea SVG dentro)
@@ -237,9 +254,12 @@
   function syncToolbarFromState() {
     const s = stateGet();
 
-    // BPM
+    // BPM — NO sobrescribir mientras el usuario escribe (input enfocado)
     const bpm = clamp(Number(s.bpm ?? 90), 40, 240);
-    if (String(els.bpmInput.value) !== String(bpm)) els.bpmInput.value = bpm;
+    if (document.activeElement !== els.bpmInput &&
+        String(els.bpmInput.value) !== String(bpm)) {
+      els.bpmInput.value = bpm;
+    }
 
     // Play button
     const playing = !!s.isPlaying;
@@ -320,6 +340,362 @@
   }
 
   // -----------------------------
+  // Kit / Toms / Mixer
+  // -----------------------------
+  function onKitChange() {
+    const kit = els.kitSelect.value === 'electronic' ? 'electronic' : 'acoustic';
+    if (typeof State.setKit === 'function') State.setKit(kit);
+    else stateSet({ kit });
+    try { if (typeof Audio.setKit === 'function') Audio.setKit(kit); } catch (_) {}
+  }
+
+  function onTomsToggle() {
+    const show = !!els.tomsToggle.checked;
+    if (typeof State.setShowToms === 'function') State.setShowToms(show);
+    else stateSet({ showToms: show });
+
+    // Cambia la estructura de pistas: reconstruir rejilla, mixer y notación
+    syncGridFromState();
+    buildMixer();
+    lastPatternRev = -1;
+    lastPatternSig = '';
+    renderNotation();
+    renderUI();
+  }
+
+  function buildMixer() {
+    if (!els.mixer) return;
+    const s = stateGet();
+    const tracks = Array.isArray(s.tracks) ? s.tracks : [];
+    const volumes = s.volumes || {};
+
+    els.mixer.innerHTML = '';
+
+    tracks.forEach((track) => {
+      const id = String(track.id);
+      const vol = Number.isFinite(Number(volumes[id])) ? Number(volumes[id]) : 0.8;
+
+      const row = document.createElement('div');
+      row.className = 'mixer__row';
+
+      const name = document.createElement('button');
+      name.type = 'button';
+      name.className = 'mixer__name';
+      name.textContent = track.label || id;
+      name.title = 'Escuchar';
+      name.addEventListener('click', () => {
+        try { if (typeof Audio.previewHit === 'function') Audio.previewHit(id); } catch (_) {}
+      });
+
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.className = 'mixer__slider';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = String(Math.round(vol * 100));
+      slider.setAttribute('aria-label', `Volumen ${track.label || id}`);
+
+      const pct = document.createElement('span');
+      pct.className = 'mixer__pct';
+      pct.textContent = `${Math.round(vol * 100)}%`;
+
+      slider.addEventListener('input', () => {
+        const v = clamp(Number(slider.value) / 100, 0, 1);
+        pct.textContent = `${Math.round(v * 100)}%`;
+        if (typeof State.setVolume === 'function') State.setVolume(id, v);
+        try { if (typeof Audio.setVolume === 'function') Audio.setVolume(id, v); } catch (_) {}
+      });
+
+      row.appendChild(name);
+      row.appendChild(slider);
+      row.appendChild(pct);
+      els.mixer.appendChild(row);
+    });
+  }
+
+  // -----------------------------
+  // Brush (tipo de golpe)
+  // -----------------------------
+  function onBrushClick(e) {
+    const btn = e.target?.closest?.('.seg__btn');
+    if (!btn || !els.brushSeg.contains(btn)) return;
+    const level = Number(btn.dataset.brush) | 0;
+    if (typeof Grid.setBrush === 'function') Grid.setBrush(level);
+    [...els.brushSeg.querySelectorAll('.seg__btn')].forEach(b => {
+      b.classList.toggle('is-on', b === btn);
+    });
+  }
+
+  // -----------------------------
+  // Métrica / compases
+  // -----------------------------
+  function parseMeter(str) {
+    const [numStr, denStr] = String(str || '4/4').split('/');
+    const num = Math.max(1, Number(numStr) || 4);
+    const den = (Number(denStr) === 8) ? 8 : 4;
+    // step = semicorchea (1/16) siempre
+    const stepsPerBeat = (den === 8) ? 2 : 4;
+    return { beatsPerBar: num, beatUnit: den, stepsPerBeat };
+  }
+
+  function applyResolution() {
+    const meter = parseMeter(els.meterSelect ? els.meterSelect.value : '4/4');
+    const bars = Math.max(1, Number(els.barsSelect ? els.barsSelect.value : 1) || 1);
+
+    if (typeof State.setResolution === 'function') {
+      State.setResolution({
+        bars,
+        beatsPerBar: meter.beatsPerBar,
+        stepsPerBeat: meter.stepsPerBeat,
+        beatUnit: meter.beatUnit,
+      });
+    }
+
+    syncGridFromState();
+    lastPatternRev = -1;
+    lastPatternSig = '';
+    renderNotation();
+    renderUI();
+  }
+
+  // -----------------------------
+  // Swing / metrónomo / claqueta
+  // -----------------------------
+  function onSwingInput() {
+    const pct = clamp(Number(els.swingRange.value) || 0, 0, 100);
+    const amount = pct / 100;
+    if (els.swingPct) els.swingPct.textContent = `${Math.round(pct)}%`;
+    if (typeof State.set === 'function') State.set({ swing: amount });
+    try { if (typeof Audio.setSwing === 'function') Audio.setSwing(amount); } catch (_) {}
+  }
+
+  function onMetroToggle() {
+    const on = !!els.metroToggle.checked;
+    if (typeof State.set === 'function') State.set({ metronome: on });
+    try { if (typeof Audio.setMetronome === 'function') Audio.setMetronome(on); } catch (_) {}
+  }
+
+  function onCountInToggle() {
+    const on = !!els.countInToggle.checked;
+    if (typeof State.set === 'function') State.set({ countIn: on });
+  }
+
+  // -----------------------------
+  // Exportar
+  // -----------------------------
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  function exportPng() {
+    const svg = els.notationRoot.querySelector('svg');
+    if (!svg) { alert('No hay partitura para exportar todavía.'); return; }
+
+    const xml = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2; // nitidez
+      const w = svg.viewBox?.baseVal?.width || svg.width.baseVal.value || img.width;
+      const h = svg.viewBox?.baseVal?.height || svg.height.baseVal.value || img.height;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((blob) => {
+        if (blob) downloadBlob(blob, 'partitura-musicala.png');
+      }, 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); alert('No se pudo exportar la partitura.'); };
+    img.src = url;
+  }
+
+  async function exportWav() {
+    if (typeof Audio.renderToWav !== 'function') { alert('Exportación de audio no disponible.'); return; }
+    const btn = els.exportWavBtn;
+    const prev = btn ? btn.textContent : '';
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = 'Generando…'; }
+      const blob = await Audio.renderToWav(stateGet());
+      downloadBlob(blob, 'ritmo-musicala.wav');
+    } catch (err) {
+      console.error('[app.js] Error exportando WAV:', err);
+      alert('No se pudo exportar el audio.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = prev; }
+    }
+  }
+
+  // -----------------------------
+  // Sincronizar todos los controles con el estado
+  // -----------------------------
+  function syncControlsFromState() {
+    const s = stateGet();
+    if (els.kitSelect) els.kitSelect.value = (s.kit === 'electronic') ? 'electronic' : 'acoustic';
+    if (els.tomsToggle) els.tomsToggle.checked = !!s.showToms;
+    if (els.meterSelect) els.meterSelect.value = `${s.beatsPerBar}/${s.beatUnit}`;
+    if (els.barsSelect) els.barsSelect.value = String(s.bars);
+    if (els.swingRange) {
+      const pct = Math.round((Number(s.swing) || 0) * 100);
+      els.swingRange.value = String(pct);
+      if (els.swingPct) els.swingPct.textContent = `${pct}%`;
+    }
+    if (els.metroToggle) els.metroToggle.checked = !!s.metronome;
+    if (els.countInToggle) els.countInToggle.checked = !!s.countIn;
+    if (els.bpmInput && document.activeElement !== els.bpmInput) {
+      els.bpmInput.value = clamp(Number(s.bpm) || 90, 40, 240);
+    }
+  }
+
+  // -----------------------------
+  // Presets de usuario (localStorage)
+  // -----------------------------
+  const USER_PRESETS_KEY = 'drumbox.userPresets.v1';
+
+  function loadUserPresets() {
+    try {
+      const raw = localStorage.getItem(USER_PRESETS_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) { return []; }
+  }
+
+  function saveUserPresets(list) {
+    try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(list)); return true; }
+    catch (err) { console.warn('[app.js] No se pudo guardar en localStorage:', err); return false; }
+  }
+
+  function refreshUserPresetSelect(selectName) {
+    if (!els.userPresetSelect) return;
+    const list = loadUserPresets();
+    els.userPresetSelect.innerHTML = '<option value="">— Guardados —</option>';
+    list.forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      els.userPresetSelect.appendChild(opt);
+    });
+    if (selectName) els.userPresetSelect.value = selectName;
+  }
+
+  function snapshotForPreset() {
+    const s = stateGet();
+    return {
+      name: '',
+      bpm: s.bpm,
+      beatsPerBar: s.beatsPerBar,
+      stepsPerBeat: s.stepsPerBeat,
+      beatUnit: s.beatUnit,
+      bars: s.bars,
+      kit: s.kit,
+      showToms: !!s.showToms,
+      swing: Number(s.swing) || 0,
+      volumes: deepClone(s.volumes || {}),
+      pattern: deepClone(s.pattern || {}),
+    };
+  }
+
+  function saveCurrentAsPreset() {
+    const name = String(els.presetName ? els.presetName.value : '').trim();
+    if (!name) { alert('Ponle un nombre a tu ritmo antes de guardar.'); els.presetName?.focus(); return; }
+
+    const data = snapshotForPreset();
+    data.name = name;
+
+    const list = loadUserPresets();
+    const idx = list.findIndex((p) => p.name.toLowerCase() === name.toLowerCase());
+    if (idx >= 0) {
+      if (!confirm(`Ya existe un ritmo llamado “${name}”. ¿Reemplazarlo?`)) return;
+      list[idx] = data;
+    } else {
+      list.push(data);
+    }
+
+    if (saveUserPresets(list)) {
+      refreshUserPresetSelect(name);
+      if (els.presetName) els.presetName.value = '';
+    }
+  }
+
+  function applyFullState(data) {
+    if (!data) return;
+
+    // 1) Estructura primero (toms y resolución) para que el patrón cuadre
+    if (typeof State.setShowToms === 'function') State.setShowToms(!!data.showToms);
+    if (typeof State.setResolution === 'function') {
+      State.setResolution({
+        bars: data.bars,
+        beatsPerBar: data.beatsPerBar,
+        stepsPerBeat: data.stepsPerBeat,
+        beatUnit: data.beatUnit,
+      });
+    }
+
+    // 2) Kit
+    if (typeof State.setKit === 'function') State.setKit(data.kit);
+    try { if (typeof Audio.setKit === 'function') Audio.setKit(data.kit); } catch (_) {}
+
+    // 3) Tempo / swing
+    stateSet({ bpm: clamp(Number(data.bpm) || 90, 40, 240), swing: clamp(Number(data.swing) || 0, 0, 1) });
+    try { if (typeof Audio.setSwing === 'function') Audio.setSwing(Number(data.swing) || 0); } catch (_) {}
+    try { if (typeof Audio.setBpm === 'function') Audio.setBpm(stateGet().bpm); } catch (_) {}
+
+    // 4) Volúmenes
+    if (data.volumes) {
+      for (const id of Object.keys(data.volumes)) {
+        const v = data.volumes[id];
+        if (typeof State.setVolume === 'function') State.setVolume(id, v);
+        try { if (typeof Audio.setVolume === 'function') Audio.setVolume(id, v); } catch (_) {}
+      }
+    }
+
+    // 5) Patrón
+    if (data.pattern && typeof State.setPattern === 'function') {
+      State.setPattern(data.pattern);
+    }
+
+    // 6) Refrescar toda la UI
+    syncControlsFromState();
+    buildMixer();
+    syncGridFromState();
+    lastPatternRev = -1;
+    lastPatternSig = '';
+    renderNotation();
+    renderUI();
+  }
+
+  function loadSelectedPreset() {
+    const name = els.userPresetSelect ? els.userPresetSelect.value : '';
+    if (!name) { alert('Elige un ritmo guardado para cargar.'); return; }
+    const data = loadUserPresets().find((p) => p.name === name);
+    if (!data) { alert('No se encontró ese ritmo.'); return; }
+    applyFullState(data);
+  }
+
+  function deleteSelectedPreset() {
+    const name = els.userPresetSelect ? els.userPresetSelect.value : '';
+    if (!name) { alert('Elige un ritmo guardado para borrar.'); return; }
+    if (!confirm(`¿Borrar el ritmo “${name}”?`)) return;
+    const list = loadUserPresets().filter((p) => p.name !== name);
+    if (saveUserPresets(list)) refreshUserPresetSelect();
+  }
+
+  // -----------------------------
   // Audio control
   // -----------------------------
   let pollingTimer = null;
@@ -390,23 +766,28 @@
   }, 120);
 
   function onBpmInput() {
-    const raw = Number(els.bpmInput.value);
+    // Mientras escribe: limpiamos a dígitos, NO recortamos ni reescribimos el campo.
+    const digits = String(els.bpmInput.value).replace(/[^0-9]/g, '');
+    if (els.bpmInput.value !== digits) els.bpmInput.value = digits;
+    if (digits === '') return;
+
+    const raw = Number(digits);
     if (!Number.isFinite(raw)) return;
 
-    const value = clamp(raw, 40, 240);
-    stateSet({ bpm: value });
-    syncToolbarFromState();
-
-    if (stateGet().isPlaying) setBpmToAudioDebounced(value);
+    // Solo aplicamos al estado/audio si ya es un valor en rango razonable.
+    if (raw >= 40 && raw <= 240) {
+      stateSet({ bpm: raw });
+      if (stateGet().isPlaying) setBpmToAudioDebounced(raw);
+    }
   }
 
   function onBpmChange() {
+    // Al salir del campo (blur/enter): recortamos y normalizamos la vista.
     const value = clamp(Number(els.bpmInput.value) || 90, 40, 240);
     stateSet({ bpm: value });
     els.bpmInput.value = value;
 
     try { if (typeof Audio.setBpm === 'function') Audio.setBpm(value); } catch (_) {}
-
     renderUI();
   }
 
@@ -418,10 +799,49 @@
 
     els.bpmInput.addEventListener('input', onBpmInput);
     els.bpmInput.addEventListener('change', onBpmChange);
+    els.bpmInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') els.bpmInput.blur();
+    });
 
     els.clearBtn.addEventListener('click', clearPattern);
     els.rockBtn.addEventListener('click', () => applyPreset('rock'));
     els.funkBtn.addEventListener('click', () => applyPreset('funk'));
+
+    // Presets con data-preset (reggaeton, cumbia, bossa, ...)
+    document.querySelectorAll('.preset-btn').forEach((b) => {
+      b.addEventListener('click', () => applyPreset(b.dataset.preset));
+    });
+
+    if (els.kitSelect) els.kitSelect.addEventListener('change', onKitChange);
+    if (els.tomsToggle) els.tomsToggle.addEventListener('change', onTomsToggle);
+
+    if (els.brushSeg) els.brushSeg.addEventListener('click', onBrushClick);
+    if (els.meterSelect) els.meterSelect.addEventListener('change', applyResolution);
+    if (els.barsSelect) els.barsSelect.addEventListener('change', applyResolution);
+    if (els.swingRange) els.swingRange.addEventListener('input', onSwingInput);
+    if (els.metroToggle) els.metroToggle.addEventListener('change', onMetroToggle);
+    if (els.countInToggle) els.countInToggle.addEventListener('change', onCountInToggle);
+    if (els.exportPngBtn) els.exportPngBtn.addEventListener('click', exportPng);
+    if (els.exportWavBtn) els.exportWavBtn.addEventListener('click', exportWav);
+
+    if (els.savePresetBtn) els.savePresetBtn.addEventListener('click', saveCurrentAsPreset);
+    if (els.loadPresetBtn) els.loadPresetBtn.addEventListener('click', loadSelectedPreset);
+    if (els.deletePresetBtn) els.deletePresetBtn.addEventListener('click', deleteSelectedPreset);
+    if (els.presetName) els.presetName.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); saveCurrentAsPreset(); }
+    });
+
+    // Barra espaciadora = play/pausa (salvo cuando se escribe en un campo)
+    document.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return;
+      const t = e.target;
+      const tag = t && t.tagName ? t.tagName.toUpperCase() : '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+      // Evitar que el espacio "active" un botón enfocado además de togglear
+      if (tag === 'BUTTON') t.blur();
+      e.preventDefault();
+      togglePlay();
+    });
   }
 
   // -----------------------------
@@ -444,6 +864,11 @@
     bindAudioStepCallback();
     initGrid();
     bindEvents();
+
+    // Sincronizar controles con el estado inicial
+    syncControlsFromState();
+    refreshUserPresetSelect();
+    buildMixer();
 
     // Render inicial
     syncGridFromState();

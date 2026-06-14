@@ -663,6 +663,173 @@ svg#notation{
 }
 
 /* =========================
+   Switch (toggle Toms)
+========================= */
+.switch{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+  user-select: none;
+}
+.switch input{
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+  cursor: pointer;
+}
+
+/* =========================
+   Mixer
+========================= */
+.mixer{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.mixer__row{
+  display: grid;
+  grid-template-columns: 128px 1fr 48px;
+  align-items: center;
+  gap: 12px;
+}
+
+.mixer__name{
+  text-align: left;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 700;
+  color: #26324a;
+  cursor: pointer;
+  min-height: 40px;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.mixer__name:hover{ background: var(--brand-soft); border-color: var(--brand-line); }
+.mixer__name:active{ transform: translateY(1px); }
+
+.mixer__slider{
+  width: 100%;
+  accent-color: var(--ok);
+  height: 28px;
+  cursor: pointer;
+}
+
+.mixer__pct{
+  text-align: right;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Partitura: que el SVG se escale en móvil sin “correrse” */
+#notation{ width: 100%; overflow-x: auto; overflow-y: hidden; }
+#notation svg{ display: block; max-width: 100%; height: auto; }
+
+/* =========================
+   Panel Ajustes
+========================= */
+.settings{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  align-items: center;
+}
+.settings__group{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settings__group--wide{ flex: 1 1 220px; min-width: 200px; }
+.settings__label{
+  color: var(--muted);
+  font-weight: 700;
+  font-size: .92rem;
+}
+.settings__slider{ flex: 1 1 120px; accent-color: var(--brand); height: 28px; cursor: pointer; }
+.settings__val{ color: var(--muted); font-weight: 700; font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
+
+.settings__sep{
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  margin: 14px 0;
+}
+.input--name{
+  width: auto;
+  flex: 1 1 160px;
+  min-width: 140px;
+  text-align: left;
+  font-weight: 600;
+}
+
+/* Segmented control (brush) */
+.seg{
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+.seg__btn{
+  border: 0;
+  background: #fff;
+  padding: 8px 12px;
+  min-height: 40px;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+  border-right: 1px solid var(--line);
+}
+.seg__btn:last-child{ border-right: 0; }
+.seg__btn.is-on{ background: var(--brand-soft); color: var(--brand); }
+.seg__btn:hover{ background: #f3f6ff; }
+
+/* =========================
+   Acento / Ghost en celdas
+========================= */
+.step.is-active.is-accent{
+  background: #4e8a2a;          /* verde más intenso */
+  border-color: #3f7321;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.55);
+}
+.step.is-active.is-ghost{
+  background: #cfe5bd;          /* verde apagado */
+  border-color: #b3d199;
+  box-shadow: none;
+}
+.step.is-active.is-ghost::after{ color: rgba(60,80,40,.5); }
+
+/* =========================
+   Contratiempos (offbeat) — ayuda visual
+========================= */
+.step.step--eighth::before,
+.step.step--sixteenth::before{
+  content: "";
+  position: absolute;
+  top: 4px;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+/* "&" (corchea) más visible que "e"/"a" (semicorcheas) */
+.step.step--eighth::before{ background: rgba(12,65,196,.32); }
+.step.step--sixteenth::before{ background: rgba(12,65,196,.14); }
+/* Ocultar el punto cuando la celda está activa (ya se ve verde) */
+.step.is-active::before{ display: none; }
+
+/* =========================
    Responsive
 ========================= */
 @media (max-width: 900px){
@@ -761,6 +928,21 @@ svg#notation{
   .notation-card{
     padding: 8px;
   }
+
+  /* Mixer compacto en móvil */
+  .mixer__row{
+    grid-template-columns: 96px 1fr 42px;
+    gap: 8px;
+  }
+  .mixer__name{
+    font-size: .85rem;
+    padding: 7px 8px;
+    min-height: 38px;
+  }
+  .mixer__pct{ font-size: .82rem; }
+
+  /* El número de pulso dentro de la celda más pequeño */
+  .step.step--beat-marker::after{ font-size: 11px; }
 
   .foot,
   .helper-text{

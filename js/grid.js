@@ -27,6 +27,9 @@
     onStepToggle: null,
   };
 
+  // Pincel actual: 1 = normal, 2 = acento, 3 = ghost
+  let brush = 1;
+
   // stepEls[trackId][stepIndex] = button.step
   const stepEls = Object.create(null);
 
@@ -145,14 +148,21 @@
     try { fn(payload); } catch (err) { console.warn('[grid.js] callback error:', err); }
   }
 
-  function setCellActiveClass(trackId, stepIndex, value) {
+  function setCellLevel(trackId, stepIndex, level) {
     const row = stepEls[trackId];
     if (!row) return;
     const cell = row[stepIndex];
     if (!cell) return;
-    const v = !!value;
-    cell.classList.toggle('is-active', v);
-    cell.setAttribute('aria-pressed', String(v));
+    const lvl = Number(level) | 0;
+    cell.classList.toggle('is-active', lvl > 0);
+    cell.classList.toggle('is-accent', lvl === 2);
+    cell.classList.toggle('is-ghost', lvl === 3);
+    cell.setAttribute('aria-pressed', String(lvl > 0));
+  }
+
+  // Compat
+  function setCellActiveClass(trackId, stepIndex, value) {
+    setCellLevel(trackId, stepIndex, value ? 1 : 0);
   }
 
   function setCountCurrentClass(stepIndex, on) {
@@ -227,14 +237,17 @@
         btn.dataset.stepIndex = String(i);
         btn.setAttribute('role', 'switch');
         btn.setAttribute('aria-label', `${track.label || trackId}, paso ${i + 1}`);
-        btn.setAttribute('aria-pressed', String(!!arr[i]));
+        const lvl = arr[i] | 0;
+        btn.setAttribute('aria-pressed', String(lvl > 0));
 
         if (showBeatNumbersInCells && isQuarterStep(i, stepsPerBeat)) {
           btn.classList.add('step--beat-marker');
           btn.dataset.beat = String(getBeatNumber(i, stepsPerBeat, beatsPerBar));
         }
 
-        if (arr[i]) btn.classList.add('is-active');
+        if (lvl > 0) btn.classList.add('is-active');
+        if (lvl === 2) btn.classList.add('is-accent');
+        if (lvl === 3) btn.classList.add('is-ghost');
 
         // OJO: ya NO ponemos listeners por botón (delegación abajo)
         root.appendChild(btn);
@@ -264,17 +277,17 @@
 
     if (!trackId || !Number.isFinite(stepIndex)) return;
 
-    let nextValue = false;
+    let nextValue = 0;
 
     const S = window.DrumState;
     if (S && typeof S.toggleStep === 'function') {
-      nextValue = !!S.toggleStep(trackId, stepIndex);
+      // Con el pincel actual: pinta ese nivel, o apaga si ya estaba en ese nivel.
+      nextValue = S.toggleStep(trackId, stepIndex, brush) | 0;
     } else {
-      // fallback
-      nextValue = !btn.classList.contains('is-active');
+      nextValue = btn.classList.contains('is-active') ? 0 : brush;
     }
 
-    setCellActiveClass(trackId, stepIndex, nextValue);
+    setCellLevel(trackId, stepIndex, nextValue);
 
     emit('onStepToggle', { trackId, stepIndex, value: nextValue });
     emit('onChange', { source: 'grid-cell', trackId, stepIndex, value: nextValue });
@@ -379,14 +392,12 @@
       const len = row.length;
 
       for (let i = 0; i < len; i++) {
-        const value = !!arr[i];
-        // micro-optim: solo tocar si cambió
+        const lvl = arr[i] | 0;
         const el = row[i];
-        const isActive = el.classList.contains('is-active');
-        if (value !== isActive) {
-          el.classList.toggle('is-active', value);
-          el.setAttribute('aria-pressed', String(value));
-        }
+        const curLvl = el.classList.contains('is-accent') ? 2
+                     : el.classList.contains('is-ghost') ? 3
+                     : el.classList.contains('is-active') ? 1 : 0;
+        if (lvl !== curLvl) setCellLevel(trackId, i, lvl);
       }
     }
 
@@ -428,11 +439,20 @@
   // -----------------------------
   // Exposición global
   // -----------------------------
+  function setBrush(level) {
+    const l = Number(level) | 0;
+    brush = (l === 2 || l === 3) ? l : 1;
+    return brush;
+  }
+  function getBrush() { return brush; }
+
   window.DrumGrid = {
     init,
     rebuild,
     refreshFromState,
     paintCurrentStep,
     setCurrentStep,
+    setBrush,
+    getBrush,
   };
 })();

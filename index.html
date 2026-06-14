@@ -76,16 +76,15 @@
         <input
           id="bpmInput"
           class="input input--bpm"
-          type="number"
-          min="40"
-          max="240"
-          step="1"
-          value="90"
+          type="text"
           inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="3"
+          value="90"
           autocomplete="off"
           aria-describedby="bpmHelp"
         />
-        <span id="bpmHelp" class="sr-only">BPM entre 40 y 240</span>
+        <span id="bpmHelp" class="sr-only">BPM entre 40 y 240. Puedes escribir el valor.</span>
 
         <button id="clearBtn" class="btn" type="button">
           Limpiar
@@ -93,13 +92,101 @@
       </div>
 
       <div class="toolbar__group" aria-label="Presets">
-        <button id="rockBtn" class="btn" type="button">Ritmo rock</button>
-        <button id="funkBtn" class="btn" type="button">Ritmo funk</button>
+        <button id="rockBtn" class="btn" type="button">Rock</button>
+        <button id="funkBtn" class="btn" type="button">Funk</button>
+        <button class="btn preset-btn" type="button" data-preset="reggaeton">Reggaetón</button>
+        <button class="btn preset-btn" type="button" data-preset="cumbia">Cumbia</button>
+        <button class="btn preset-btn" type="button" data-preset="bossa">Bossa</button>
+      </div>
+
+      <div class="toolbar__group" aria-label="Sonido">
+        <label class="label" for="kitSelect">Kit</label>
+        <select id="kitSelect" class="select">
+          <option value="acoustic">Acústico</option>
+          <option value="electronic">Electrónico</option>
+        </select>
+
+        <label class="switch" for="tomsToggle">
+          <input id="tomsToggle" type="checkbox" />
+          <span>Toms</span>
+        </label>
       </div>
 
       <div class="toolbar__spacer" aria-hidden="true"></div>
 
       <div id="statusText" class="label" aria-live="polite"></div>
+    </section>
+
+    <!-- Panel Ajustes -->
+    <section class="panel" aria-label="Ajustes del ritmo">
+      <h2 class="panel__title">Ajustes</h2>
+      <div class="settings">
+        <div class="settings__group" role="group" aria-label="Tipo de golpe">
+          <span class="settings__label">Golpe</span>
+          <div class="seg" id="brushSeg">
+            <button type="button" class="seg__btn is-on" data-brush="1">Normal</button>
+            <button type="button" class="seg__btn" data-brush="2">Acento</button>
+            <button type="button" class="seg__btn" data-brush="3">Ghost</button>
+          </div>
+        </div>
+
+        <div class="settings__group">
+          <label class="settings__label" for="meterSelect">Compás</label>
+          <select id="meterSelect" class="select">
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="2/4">2/4</option>
+            <option value="6/8">6/8</option>
+          </select>
+        </div>
+
+        <div class="settings__group">
+          <label class="settings__label" for="barsSelect">Compases</label>
+          <select id="barsSelect" class="select">
+            <option value="1">1</option>
+            <option value="2">2</option>
+          </select>
+        </div>
+
+        <div class="settings__group settings__group--wide">
+          <label class="settings__label" for="swingRange">Swing</label>
+          <input id="swingRange" class="settings__slider" type="range" min="0" max="60" step="1" value="0" />
+          <span id="swingPct" class="settings__val">0%</span>
+        </div>
+
+        <div class="settings__group">
+          <label class="switch" for="metroToggle">
+            <input id="metroToggle" type="checkbox" /><span>Metrónomo</span>
+          </label>
+          <label class="switch" for="countInToggle">
+            <input id="countInToggle" type="checkbox" /><span>Claqueta</span>
+          </label>
+        </div>
+
+        <div class="settings__group">
+          <span class="settings__label">Exportar</span>
+          <button id="exportPngBtn" class="btn small" type="button">Partitura PNG</button>
+          <button id="exportWavBtn" class="btn small" type="button">Audio WAV</button>
+        </div>
+      </div>
+
+      <hr class="settings__sep" />
+
+      <div class="settings">
+        <div class="settings__group settings__group--wide">
+          <span class="settings__label">Mis ritmos</span>
+          <input id="presetName" class="input input--name" type="text" maxlength="40"
+                 placeholder="Nombre del ritmo" autocomplete="off" />
+          <button id="savePresetBtn" class="btn small" type="button">Guardar</button>
+        </div>
+        <div class="settings__group">
+          <select id="userPresetSelect" class="select">
+            <option value="">— Guardados —</option>
+          </select>
+          <button id="loadPresetBtn" class="btn small" type="button">Cargar</button>
+          <button id="deletePresetBtn" class="btn small" type="button">Borrar</button>
+        </div>
+      </div>
     </section>
 
     <!-- Panel Grid -->
@@ -116,6 +203,13 @@
           aria-describedby="a11yHint"
         ></div>
       </div>
+    </section>
+
+    <!-- Panel Mezcla -->
+    <section class="panel" aria-label="Mezcla de volúmenes">
+      <h2 class="panel__title">Mezcla</h2>
+      <p class="panel__subtitle">Ajusta el volumen de cada pieza. Toca el nombre para escucharla.</p>
+      <div id="mixer" class="mixer"></div>
     </section>
 
     <!-- Panel Notación -->

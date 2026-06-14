@@ -20,11 +20,40 @@
   const DEFAULT_BPM = 90;
 
   // Orden visual / lógico base (MVP)
-  const DEFAULT_TRACKS = [
+  const BASE_TRACKS = [
     { id: 'hh', label: 'Hi-hat' },
     { id: 'sn', label: 'Redoblante' },
     { id: 'bd', label: 'Bombo' },
   ];
+
+  // Set extendido con toms (orden de agudo a grave, como en partitura)
+  const TRACKS_WITH_TOMS = [
+    { id: 'hh', label: 'Hi-hat' },
+    { id: 't1', label: 'Tom 1' },
+    { id: 't2', label: 'Tom 2' },
+    { id: 'sn', label: 'Redoblante' },
+    { id: 'tf', label: 'Tom piso' },
+    { id: 'bd', label: 'Bombo' },
+  ];
+
+  // Compat: muchos módulos referencian DEFAULT_TRACKS
+  const DEFAULT_TRACKS = BASE_TRACKS;
+
+  // Volúmenes por pista (0..1 lineal). Audio.js los convierte a dB.
+  const DEFAULT_VOLUMES = {
+    hh: 0.6,
+    sn: 0.85,
+    bd: 1.0,
+    t1: 0.8,
+    t2: 0.8,
+    tf: 0.85,
+  };
+
+  const DEFAULT_KIT = 'acoustic'; // 'acoustic' | 'electronic'
+
+  function tracksForState(showToms) {
+    return deepClone(showToms ? TRACKS_WITH_TOMS : BASE_TRACKS);
+  }
 
   // -----------------------------
   // Utils (con fallbacks)
@@ -61,6 +90,21 @@
     return out;
   }
 
+  // Niveles de golpe: 0 = off, 1 = normal, 2 = acento, 3 = ghost
+  function toLevel(v) {
+    if (v === true) return 1;
+    const n = Math.floor(Number(v));
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return n > 3 ? 1 : n;
+  }
+
+  function toLevelArray(arr, len) {
+    const out = Array(len).fill(0);
+    if (!Array.isArray(arr)) return out;
+    for (let i = 0; i < len; i++) out[i] = toLevel(arr[i]);
+    return out;
+  }
+
   function normalizeTracks(tracks) {
     if (!Array.isArray(tracks) || !tracks.length) return deepClone(DEFAULT_TRACKS);
 
@@ -85,14 +129,14 @@
 
   function buildEmptyPattern(trackIds, steps) {
     const pattern = {};
-    for (const id of trackIds) pattern[id] = Array(steps).fill(false);
+    for (const id of trackIds) pattern[id] = Array(steps).fill(0);
     return pattern;
   }
 
   function normalizePattern(inputPattern, tracks, steps) {
     const src = isPlainObject(inputPattern) ? inputPattern : {};
     const pattern = {};
-    for (const t of tracks) pattern[t.id] = toBoolArray(src[t.id], steps);
+    for (const t of tracks) pattern[t.id] = toLevelArray(src[t.id], steps);
     return pattern;
   }
 
@@ -120,10 +164,10 @@
     const out = {};
     for (const t of tracks) {
       const src = Array.isArray(prevPattern?.[t.id]) ? prevPattern[t.id] : [];
-      const next = Array(nextSteps).fill(false);
+      const next = Array(nextSteps).fill(0);
 
       const limit = Math.min(prevSteps, nextSteps);
-      for (let i = 0; i < limit; i++) next[i] = !!src[i];
+      for (let i = 0; i < limit; i++) next[i] = toLevel(src[i]);
 
       out[t.id] = next;
     }
@@ -151,9 +195,28 @@
   // -----------------------------
   // Normalización global
   // -----------------------------
+  function normalizeVolumes(input) {
+    const src = isPlainObject(input) ? input : {};
+    const out = {};
+    for (const id of Object.keys(DEFAULT_VOLUMES)) {
+      const v = Number(src[id]);
+      out[id] = Number.isFinite(v) ? clamp(v, 0, 1) : DEFAULT_VOLUMES[id];
+    }
+    return out;
+  }
+
   function ensureStateShape(s) {
-    // Tracks
-    s.tracks = normalizeTracks(s.tracks);
+    // Toms (define qué tracks existen)
+    s.showToms = !!s.showToms;
+
+    // Kit de sonidos
+    s.kit = (s.kit === 'electronic') ? 'electronic' : DEFAULT_KIT;
+
+    // Volúmenes por pista
+    s.volumes = normalizeVolumes(s.volumes);
+
+    // Tracks: se derivan de showToms (no se editan a mano en este app)
+    s.tracks = normalizeTracks(tracksForState(s.showToms));
 
     // Resolución
     s.bars = toPosInt(s.bars, 1, 1);
@@ -182,6 +245,14 @@
     // subdivision (por compás, no por total)
     s.subdivision = String(s.stepsPerBar); // "16" para 4/4 semicorcheas
 
+    // Unidad de pulso de la métrica (4 = negra, 8 = corchea p.ej. 6/8)
+    s.beatUnit = (Number(s.beatUnit) === 8) ? 8 : 4;
+
+    // Groove / práctica
+    s.swing = clamp(Number(s.swing) || 0, 0, 1);
+    s.metronome = !!s.metronome;
+    s.countIn = !!s.countIn;
+
     // patternRevision (si no existe)
     s.patternRevision = Number.isFinite(Number(s.patternRevision)) ? (Number(s.patternRevision) >>> 0) : 0;
 
@@ -207,6 +278,15 @@
 
     countMode: 'full',
     showBeatNumbersInCells: true,
+
+    // Nuevos
+    kit: DEFAULT_KIT,
+    volumes: { ...DEFAULT_VOLUMES },
+    showToms: false,
+    beatUnit: 4,
+    swing: 0,
+    metronome: false,
+    countIn: false,
 
     tracks: deepClone(DEFAULT_TRACKS),
     pattern: buildEmptyPattern(DEFAULT_TRACKS.map(t => t.id), DEFAULT_STEPS),
@@ -317,32 +397,44 @@
     const id = String(trackId || '').trim();
     const idx = Math.floor(Number(stepIndex));
 
-    if (!_state.pattern[id]) return false;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= _state.steps) return false;
+    if (!_state.pattern[id]) return 0;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= _state.steps) return 0;
 
-    const nextValue = (typeof forceValue === 'boolean')
-      ? forceValue
-      : !_state.pattern[id][idx];
+    const current = _state.pattern[id][idx];
+    let nextValue;
 
-    const prev = _state.pattern[id][idx];
-    _state.pattern[id][idx] = !!nextValue;
+    if (typeof forceValue === 'number' || typeof forceValue === 'boolean') {
+      // forceValue como nivel deseado. Si ya es ese nivel, apaga (toggle).
+      const wanted = toLevel(forceValue);
+      nextValue = (current === wanted) ? 0 : wanted;
+    } else {
+      // Sin valor: alterna off/normal
+      nextValue = current ? 0 : 1;
+    }
 
-    // Solo “tocamos” si cambió realmente
-    if (prev !== _state.pattern[id][idx]) touchPattern('pattern');
-
-    return _state.pattern[id][idx];
+    _state.pattern[id][idx] = nextValue;
+    if (current !== nextValue) touchPattern('pattern');
+    return nextValue;
   }
 
   function setStep(trackId, stepIndex, value) {
-    return toggleStep(trackId, stepIndex, !!value);
+    const id = String(trackId || '').trim();
+    const idx = Math.floor(Number(stepIndex));
+    if (!_state.pattern[id]) return 0;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= _state.steps) return 0;
+    const next = toLevel(value);
+    const prev = _state.pattern[id][idx];
+    _state.pattern[id][idx] = next;
+    if (prev !== next) touchPattern('pattern');
+    return next;
   }
 
   function getStep(trackId, stepIndex) {
     const id = String(trackId || '').trim();
     const idx = Math.floor(Number(stepIndex));
-    if (!_state.pattern[id]) return false;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= _state.steps) return false;
-    return !!_state.pattern[id][idx];
+    if (!_state.pattern[id]) return 0;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= _state.steps) return 0;
+    return _state.pattern[id][idx] | 0;
   }
 
   function setCurrentStep(stepIndex) {
@@ -356,6 +448,48 @@
     _state.bpm = clamp(Number(bpm) || DEFAULT_BPM, 40, 240);
     emit('tempo', { bpm: _state.bpm, state: _state });
     return _state.bpm;
+  }
+
+  function setKit(kit) {
+    _state.kit = (kit === 'electronic') ? 'electronic' : 'acoustic';
+    emit('kit', { kit: _state.kit, state: _state });
+    return _state.kit;
+  }
+
+  function setVolume(trackId, value) {
+    const id = String(trackId || '').trim();
+    if (!(id in _state.volumes)) return null;
+    _state.volumes[id] = clamp(Number(value), 0, 1);
+    emit('volume', { trackId: id, value: _state.volumes[id], state: _state });
+    return _state.volumes[id];
+  }
+
+  function getVolume(trackId) {
+    const id = String(trackId || '').trim();
+    return Number.isFinite(_state.volumes[id]) ? _state.volumes[id] : null;
+  }
+
+  function setShowToms(show) {
+    const next = !!show;
+    if (next === _state.showToms) return _state;
+
+    const prevSteps = _state.steps;
+    const prevPattern = deepClone(_state.pattern);
+
+    _state.showToms = next;
+    ensureStateShape(_state); // recalcula tracks
+
+    // Preservar lo que existía por id (hh/sn/bd se mantienen)
+    _state.pattern = buildEmptyPattern(getTrackIds(_state.tracks), _state.steps);
+    for (const t of _state.tracks) {
+      if (Array.isArray(prevPattern[t.id])) {
+        _state.pattern[t.id] = toBoolArray(prevPattern[t.id], _state.steps);
+      }
+    }
+
+    ensureStateShape(_state);
+    touchPattern('structure');
+    return _state;
   }
 
   function hasAnyActiveStep() {
@@ -414,6 +548,9 @@
     _state.bars = nextBars;
     _state.beatsPerBar = nextBeatsPerBar;
     _state.stepsPerBeat = nextStepsPerBeat;
+    if (Number(config.beatUnit) === 8 || Number(config.beatUnit) === 4) {
+      _state.beatUnit = Number(config.beatUnit);
+    }
 
     _state.steps = computeSteps(_state.beatsPerBar, _state.stepsPerBeat, _state.bars);
     _state.stepsPerBar = _state.beatsPerBar * _state.stepsPerBeat;
@@ -486,6 +623,12 @@
     setTracks,
     getTrackById,
     setResolution,
+
+    // Sonido / mezcla / toms
+    setKit,
+    setVolume,
+    getVolume,
+    setShowToms,
 
     // Playback/UI
     setCurrentStep,

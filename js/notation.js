@@ -1,274 +1,181 @@
 'use strict';
 
 /* =============================================================================
-  notation.js — DrumNotation (VexFlow SVG) — v2.1
+  notation.js — DrumNotation (VexFlow SVG) — v4.0
   ------------------------------------------------------------------------------
-  - VexFlow SVG backend
-  - Renderiza dentro de <div id="notation"></div> (NO svg manual)
-  - Convierte 16 steps (semicorcheas en 4/4) a figuras reales
-  - Parte cuando cruza beat (internamente correcto)
-  - Opción A: NO dibuja ligaduras y puede ocultar notas de continuación
+  - Una sola voz con ACORDES por compás => notas simultáneas alineadas en columna
+  - Paramétrico: métrica (2/4, 3/4, 4/4, 6/8...) y varios compases
+  - Hi-hat con cabeza "x"
+  - Acentos (nivel 2) con articulación; ghost notes (nivel 3) entre paréntesis/atenuadas
+  - Step = semicorchea (1/16). beatUnit define el denominador de la métrica.
 
-  API:
-    - DrumNotation.init(container, state)
-    - DrumNotation.render(state)
-    - DrumNotation.refreshFromState(state)  // alias
-
+  API: init(container, state) / render(state) / refreshFromState(state)
 ============================================================================= */
 
 (() => {
   const VF = window?.Vex?.Flow;
-  if (!VF) {
-    console.error('[DrumNotation] VexFlow no está cargado. Incluye vexflow.js antes de notation.js');
-    return;
-  }
+  if (!VF) { console.error('[DrumNotation] VexFlow no está cargado.'); return; }
 
-  // -------------------------
-  // Display config (Opción A)
-  // -------------------------
-  const DISPLAY = {
-    showTies: false,               // <- NO dibujar ligaduras
-    hideTiedContinuations: true,   // <- Ocultar notas “de continuidad” (las que serían ligadas)
-  };
-
-  // 16 steps = 1 compás 4/4 en semicorcheas
-  const STEPS_PER_BAR = 16;
-  const STEPS_PER_BEAT = 4; // negra = 4 semicorcheas
-  const DEFAULT_HEIGHT = 220;
-
-  // Duración en steps -> VexFlow duration
-  const STEP_TO_VF = new Map([
-    [16, 'w'],
-    [8, 'h'],
-    [4, 'q'],
-    [2, '8'],
-    [1, '16'],
-  ]);
-
-  // Para descomponer dentro de beat
+  const DEFAULT_HEIGHT = 170;
+  const STEP_TO_VF = new Map([[16, 'w'], [8, 'h'], [4, 'q'], [2, '8'], [1, '16']]);
   const GREEDY = [16, 8, 4, 2, 1];
 
-  // Posiciones en pentagrama (clef percussion)
-  const PITCH = {
-    hh: 'g/5', // arriba
-    sn: 'd/5', // medio
-    bd: 'f/4', // abajo
+  // Posiciones en pentagrama (percusión). hh con cabeza "x".
+  const VOICES_DEF = [
+    { id: 'hh', key: 'g/5/x2' },
+    { id: 't1', key: 'e/5' },
+    { id: 't2', key: 'd/5' },
+    { id: 'sn', key: 'c/5' },
+    { id: 'tf', key: 'a/4' },
+    { id: 'bd', key: 'f/4' },
+  ];
+  const ALL_IDS = VOICES_DEF.map(v => v.id);
+
+  let containerEl = null, renderer = null, context = null;
+  let width = 0, height = DEFAULT_HEIGHT, lastHash = null, ro = null;
+
+  // -------- helpers --------
+  const clearContainer = () => { if (containerEl) containerEl.innerHTML = ''; };
+  const computeWidth = () => {
+    const rect = containerEl.getBoundingClientRect();
+    return Math.max(420, Math.floor(rect.width || 0) || 720);
   };
+  const getLiveState = () => { try { return window?.DrumState?.get?.() || {}; } catch (_) { return {}; } };
 
-  // Estado interno
-  let containerEl = null;
-  let renderer = null;
-  let context = null;
-  let width = 0;
-  let height = DEFAULT_HEIGHT;
-  let lastHash = null;
-  let ro = null; // ResizeObserver
+  function getConfig(state) {
+    const beatsPerBar = Math.max(1, Number(state?.beatsPerBar) || 4);
+    const stepsPerBeat = Math.max(1, Number(state?.stepsPerBeat) || 4);
+    const bars = Math.max(1, Number(state?.bars) || 1);
+    const beatUnit = (Number(state?.beatUnit) === 8) ? 8 : 4;
+    const stepsPerBar = beatsPerBar * stepsPerBeat;
+    // Agrupación de vigas: en x/8 agrupamos por pulso compuesto (3 corcheas)
+    const beamGroupSteps = (beatUnit === 8) ? stepsPerBeat * 3 : stepsPerBeat;
+    return { beatsPerBar, stepsPerBeat, bars, beatUnit, stepsPerBar, beamGroupSteps,
+             totalSteps: stepsPerBar * bars, ts: `${beatsPerBar}/${beatUnit}` };
+  }
 
-  // -------------------------
-  // Helpers
-  // -------------------------
-  const normalize16 = (arr) => {
-    const out = new Array(STEPS_PER_BAR).fill(0);
-    if (!Array.isArray(arr)) return out;
-    for (let i = 0; i < STEPS_PER_BAR; i++) out[i] = arr[i] ? 1 : 0;
-    return out;
-  };
-
-  const getPatternFromState = (state) => {
-    if (!state) return { hh: [], sn: [], bd: [] };
-    const p = state.pattern && typeof state.pattern === 'object' ? state.pattern : state;
-    return {
-      hh: normalize16(p.hh),
-      sn: normalize16(p.sn),
-      bd: normalize16(p.bd),
-    };
-  };
-
-  const hashPattern = (p) => `${p.hh.join('')}/${p.sn.join('')}/${p.bd.join('')}`;
-
-  const nextHitIndex = (steps, from) => {
-    for (let i = from; i < STEPS_PER_BAR; i++) if (steps[i]) return i;
-    return STEPS_PER_BAR;
-  };
-
-  const beatEnd = (pos) => {
-    const beatIdx = Math.floor(pos / STEPS_PER_BEAT);
-    return Math.min(STEPS_PER_BAR, (beatIdx + 1) * STEPS_PER_BEAT);
-  };
-
-  const decomposeSteps = (len) => {
-    const parts = [];
-    let rem = len;
-    for (const s of GREEDY) {
-      while (rem >= s) {
-        parts.push(s);
-        rem -= s;
-      }
+  function getLevels(state, totalSteps) {
+    const p = (state && state.pattern && typeof state.pattern === 'object') ? state.pattern : (state || {});
+    const out = {};
+    for (const id of ALL_IDS) {
+      const arr = Array.isArray(p[id]) ? p[id] : [];
+      const a = new Array(totalSteps).fill(0);
+      for (let i = 0; i < totalSteps; i++) a[i] = arr[i] | 0;
+      out[id] = a;
     }
+    return out;
+  }
+
+  const keyToValue = (key) => {
+    const [letter, octStr] = String(key).split('/');
+    const order = { c: 0, d: 1, e: 2, f: 3, g: 4, a: 5, b: 6 };
+    const oct = Number(octStr) || 4;
+    return oct * 7 + (order[letter[0].toLowerCase()] ?? 0);
+  };
+
+  const decompose = (len) => {
+    const parts = []; let rem = len;
+    for (const s of GREEDY) while (rem >= s) { parts.push(s); rem -= s; }
     return parts;
   };
 
-  const clearContainer = () => {
-    if (!containerEl) return;
-    containerEl.innerHTML = '';
+  const anyHitAt = (lv, i) => ALL_IDS.some(id => lv[id][i]);
+  const nextOnset = (lv, from, total) => {
+    for (let i = from; i < total; i++) if (anyHitAt(lv, i)) return i;
+    return total;
   };
 
-  const computeWidth = () => {
-    const rect = containerEl.getBoundingClientRect();
-    return Math.max(520, Math.floor(rect.width || 0) || 720);
-  };
+  // -------- construcción de notas para UN compás --------
+  function buildBar(lv, startStep, cfg) {
+    const notes = [], ties = [];
+    const { stepsPerBar, beamGroupSteps } = cfg;
+    const barEndAbs = startStep + stepsPerBar;
 
-  function getLiveStateFallback() {
-    try {
-      return window?.DrumState?.get?.() || {};
-    } catch (_) {
-      return {};
+    const groupEnd = (posAbs) => {
+      const rel = posAbs - startStep;
+      const g = Math.floor(rel / beamGroupSteps);
+      return Math.min(stepsPerBar, (g + 1) * beamGroupSteps) + startStep;
+    };
+
+    const emitSpan = (a, b, idsAtStep) => {
+      let cursor = a, remaining = b - a;
+      const pieces = [];
+      while (remaining > 0) {
+        // Figura más grande que (a) cabe y (b) está alineada a su propia duración
+        // dentro del compás. Evita sobre-dividir (p.ej. una redonda no se parte en 4 negras).
+        const rel = cursor - startStep;
+        let chosen = 1;
+        for (const L of GREEDY) {
+          if (L <= remaining && rel % L === 0) { chosen = L; break; }
+        }
+        const vfDur = STEP_TO_VF.get(chosen) || '16';
+        const note = idsAtStep ? makeChord(idsAtStep, vfDur, lv, a) : makeRest(vfDur);
+        notes.push(note);
+        if (idsAtStep) pieces.push(note);
+        cursor += chosen; remaining -= chosen;
+      }
+      if (idsAtStep && pieces.length > 1) {
+        for (let i = 0; i < pieces.length - 1; i++) {
+          ties.push(new VF.StaveTie({ first_note: pieces[i], last_note: pieces[i + 1] }));
+        }
+      }
+    };
+
+    let pos = startStep;
+    while (pos < barEndAbs) {
+      if (!anyHitAt(lv, pos)) {
+        const end = Math.min(barEndAbs, nextOnset(lv, pos, barEndAbs));
+        emitSpan(pos, end, null);
+        pos = end;
+      } else {
+        const ids = ALL_IDS.filter(id => lv[id][pos]);
+        const end = Math.min(barEndAbs, nextOnset(lv, pos + 1, barEndAbs));
+        emitSpan(pos, end, ids);
+        pos = end;
+      }
     }
+    return { notes, ties };
   }
 
-  // Oculta una nota VISUALMENTE pero deja sus ticks para que el compás cuadre.
-  function hideNoteVisually(note) {
-    try {
-      // Nota + plica invisibles
-      if (typeof note.setStyle === 'function') {
-        note.setStyle({ fillStyle: 'transparent', strokeStyle: 'transparent' });
+  function makeChord(idsAtStep, vfDur, lv, atStep) {
+    const defs = VOICES_DEF.filter(v => idsAtStep.includes(v.id));
+    const sorted = defs.slice().sort((a, b) => keyToValue(a.key) - keyToValue(b.key));
+    const keys = sorted.map(d => d.key);
+    const note = new VF.StaveNote({ clef: 'percussion', keys, duration: vfDur });
+
+    let hasAccent = false;
+    sorted.forEach((d, idx) => {
+      const lvl = lv[d.id][atStep] | 0;
+      if (lvl === 2) hasAccent = true;
+      if (lvl === 3) { // ghost: atenuar
+        try { note.setKeyStyle(idx, { fillStyle: 'rgba(24,35,58,0.45)', strokeStyle: 'rgba(24,35,58,0.45)' }); } catch (_) {}
       }
-
-      // Heads invisibles (VexFlow a veces dibuja heads aparte)
-      if (typeof note.getNoteHeads === 'function') {
-        const heads = note.getNoteHeads() || [];
-        heads.forEach(h => {
-          if (h?.setStyle) h.setStyle({ fillStyle: 'transparent', strokeStyle: 'transparent' });
-        });
-      }
-
-      // Stem invisible
-      if (typeof note.setStemStyle === 'function') {
-        note.setStemStyle({ strokeStyle: 'transparent', fillStyle: 'transparent' });
-      }
-
-      // Flag invisible (si aplica)
-      if (typeof note.setFlagStyle === 'function') {
-        note.setFlagStyle({ strokeStyle: 'transparent', fillStyle: 'transparent' });
-      }
-    } catch (_) {
-      // Si VexFlow se pone dramático, igual seguimos
-    }
-  }
-
-  // -------------------------
-  // VexFlow builders
-  // -------------------------
-  function makeNote(inst, vfDur, isRest) {
-    const duration = isRest ? `${vfDur}r` : vfDur;
-
-    const note = new VF.StaveNote({
-      clef: 'percussion',
-      keys: [PITCH[inst]],
-      duration,
     });
 
-    // Hi-hat con cabeza "x" si el build lo permite
-    if (!isRest && inst === 'hh') {
-      try {
-        if (note.setNoteHeadType) note.setNoteHeadType(0, 'x');
-      } catch (_) {}
+    if (hasAccent) {
+      try { note.addModifier(new VF.Articulation('a>').setPosition(VF.Modifier.Position.ABOVE), 0); }
+      catch (_) {
+        try { note.addArticulation(0, new VF.Articulation('a>').setPosition(3)); } catch (_) {}
+      }
     }
-
     return note;
   }
 
-  function buildVoice(inst, steps) {
-    const notes = [];
-    const ties = [];
-
-    let pos = 0;
-    while (pos < STEPS_PER_BAR) {
-      const isHit = !!steps[pos];
-
-      // Segmento:
-      // - Si hay hit, se sostiene hasta el siguiente hit o fin
-      // - Si no hay hit, es silencio hasta el próximo hit
-      const segEnd = isHit ? nextHitIndex(steps, pos + 1) : nextHitIndex(steps, pos);
-      let segLen = Math.max(0, segEnd - pos);
-
-      if (segLen === 0) {
-        pos++;
-        continue;
-      }
-
-      let remaining = segLen;
-      let cursor = pos;
-
-      // Piezas del hit (para ties / continuaciones)
-      const hitPieces = [];
-
-      // Partimos por beats para no cruzar pulso con una sola figura
-      while (remaining > 0) {
-        const bEnd = beatEnd(cursor);
-        const chunk = Math.min(remaining, bEnd - cursor); // <= 4 en 4/4 semicorcheas
-
-        const parts = decomposeSteps(chunk).filter(s => s <= 4);
-
-        for (const partSteps of parts) {
-          const vfDur = STEP_TO_VF.get(partSteps) || '16';
-          const n = makeNote(inst, vfDur, !isHit);
-
-          // Marcamos si esto es “continuación” de un hit sostenido
-          const isContinuation = isHit && hitPieces.length > 0;
-
-          // Opción A: ocultar continuaciones
-          if (DISPLAY.hideTiedContinuations && isContinuation) {
-            hideNoteVisually(n);
-          }
-
-          notes.push(n);
-
-          if (isHit) hitPieces.push(n);
-
-          cursor += partSteps;
-          remaining -= partSteps;
-        }
-      }
-
-      // Ties entre piezas (solo si se quieren mostrar)
-      if (DISPLAY.showTies && isHit && hitPieces.length > 1) {
-        for (let i = 0; i < hitPieces.length - 1; i++) {
-          ties.push(new VF.StaveTie({
-            first_note: hitPieces[i],
-            last_note: hitPieces[i + 1],
-            first_indices: [0],
-            last_indices: [0],
-          }));
-        }
-      }
-
-      pos = segEnd;
-    }
-
-    const voice = new VF.Voice({ num_beats: 4, beat_value: 4 });
-    // strict(false) evita que explote por pequeños desfases en algunos builds
-    voice.setStrict(false);
-    voice.addTickables(notes);
-
-    return { voice, ties };
+  function makeRest(vfDur) {
+    return new VF.StaveNote({ clef: 'percussion', keys: ['b/4'], duration: `${vfDur}r` });
   }
 
-  // -------------------------
-  // Render
-  // -------------------------
+  // -------- render --------
   function draw(state) {
-    if (!containerEl) throw new Error('DrumNotation no inicializado. Llama init() primero.');
+    if (!containerEl) throw new Error('DrumNotation no inicializado.');
+    const cfg = getConfig(state);
+    const lv = getLevels(state, cfg.totalSteps);
 
-    const pattern = getPatternFromState(state);
-    const h = hashPattern(pattern);
-
-    // No render por playhead tick: solo si cambió el patrón
-    if (h === lastHash) return;
-    lastHash = h;
+    // Nota: el control de "cuándo renderizar" lo lleva app.js (por patternRevision).
+    // No deduplicamos aquí para evitar desincronización con cambios de estructura.
+    lastHash = cfg.ts + '|' + cfg.bars + '|' + ALL_IDS.map(id => lv[id].join('')).join('/');
 
     clearContainer();
-
     width = computeWidth();
     height = DEFAULT_HEIGHT;
 
@@ -276,37 +183,40 @@
     renderer.resize(width, height);
     context = renderer.getContext();
 
-    // Stave
-    const stave = new VF.Stave(10, 20, width - 20);
-    stave.addClef('percussion').addTimeSignature('4/4');
-    stave.setContext(context).draw();
+    const B = cfg.bars;
+    const leftPad = 10, rightPad = 12;
+    const usable = width - leftPad - rightPad;
+    const barW = usable / B;
 
-    // Voces
-    const hh = buildVoice('hh', pattern.hh);
-    const sn = buildVoice('sn', pattern.sn);
-    const bd = buildVoice('bd', pattern.bd);
+    for (let b = 0; b < B; b++) {
+      const x = leftPad + b * barW;
+      const stave = new VF.Stave(x, 18, barW);
+      if (b === 0) stave.addClef('percussion').addTimeSignature(cfg.ts);
+      stave.setContext(context).draw();
 
-    // Formateo conjunto
-    const formatter = new VF.Formatter();
-    formatter.joinVoices([hh.voice, sn.voice, bd.voice]);
-    formatter.format([hh.voice, sn.voice, bd.voice], width - 90);
+      const { notes, ties } = buildBar(lv, b * cfg.stepsPerBar, cfg);
 
-    // Draw voices
-    hh.voice.draw(context, stave);
-    sn.voice.draw(context, stave);
-    bd.voice.draw(context, stave);
+      const voice = new VF.Voice({ num_beats: cfg.beatsPerBar, beat_value: cfg.beatUnit });
+      voice.setStrict(false);
+      voice.addTickables(notes.length ? notes : [makeRest('w')]);
 
-    // Draw ties (si están habilitadas)
-    if (DISPLAY.showTies) {
-      [...hh.ties, ...sn.ties, ...bd.ties].forEach(t => t.setContext(context).draw());
+      let beams = [];
+      try {
+        beams = VF.Beam.generateBeams(notes, {
+          groups: [new VF.Fraction(cfg.beamGroupSteps, 16)],
+          beam_rests: false,
+        });
+      } catch (_) { beams = []; }
+
+      const formatPad = b === 0 ? 92 : 24;
+      new VF.Formatter().joinVoices([voice]).format([voice], Math.max(60, barW - formatPad));
+
+      voice.draw(context, stave);
+      beams.forEach(bm => bm.setContext(context).draw());
+      ties.forEach(t => t.setContext(context).draw());
     }
 
-    // Hint si todo está vacío
-    const any =
-      pattern.hh.some(Boolean) ||
-      pattern.sn.some(Boolean) ||
-      pattern.bd.some(Boolean);
-
+    const any = ALL_IDS.some(id => lv[id].some(Boolean));
     if (!any) {
       try {
         const svg = containerEl.querySelector('svg');
@@ -314,9 +224,9 @@
           const ns = 'http://www.w3.org/2000/svg';
           const t = document.createElementNS(ns, 'text');
           t.setAttribute('x', String(width / 2));
-          t.setAttribute('y', String(height - 18));
+          t.setAttribute('y', String(height - 14));
           t.setAttribute('text-anchor', 'middle');
-          t.setAttribute('font-family', 'Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial');
+          t.setAttribute('font-family', 'Inter, system-ui, sans-serif');
           t.setAttribute('font-size', '12');
           t.setAttribute('font-weight', '600');
           t.setAttribute('fill', 'rgba(15,23,42,0.35)');
@@ -327,42 +237,23 @@
     }
   }
 
-  // -------------------------
-  // Public API
-  // -------------------------
   const DrumNotation = {
     init(container, state) {
-      containerEl = (typeof container === 'string')
-        ? document.querySelector(container)
-        : container;
-
+      containerEl = (typeof container === 'string') ? document.querySelector(container) : container;
       if (!containerEl) throw new Error('DrumNotation.init: container no encontrado.');
-
       clearContainer();
-
-      // Responsive: re-render en resize (aunque patrón igual)
       if ('ResizeObserver' in window) {
         try {
           ro?.disconnect?.();
-          ro = new ResizeObserver(() => {
-            lastHash = null;
-            draw(getLiveStateFallback());
-          });
+          ro = new ResizeObserver(() => { lastHash = null; draw(getLiveState()); });
           ro.observe(containerEl);
         } catch (_) {}
       }
-
       lastHash = null;
-      draw(state || getLiveStateFallback());
+      draw(state || getLiveState());
     },
-
-    render(state) {
-      draw(state || getLiveStateFallback());
-    },
-
-    refreshFromState(state) {
-      draw(state || getLiveStateFallback());
-    },
+    render(state) { draw(state || getLiveState()); },
+    refreshFromState(state) { draw(state || getLiveState()); },
   };
 
   window.DrumNotation = DrumNotation;

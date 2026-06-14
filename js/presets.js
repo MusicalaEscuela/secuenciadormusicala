@@ -26,7 +26,8 @@
   }
 
   function bools(arr) {
-    return arr.map(v => !!v);
+    // Conserva niveles (0..3); true => 1
+    return arr.map(v => (v === true ? 1 : (Math.floor(Number(v)) || 0)));
   }
 
   function makePattern({ hh = [], sn = [], bd = [] } = {}) {
@@ -38,9 +39,13 @@
   }
 
   function ensure16(arr) {
-    const out = Array(16).fill(false);
+    // Preserva niveles 0..3 (0 off, 1 normal, 2 acento, 3 ghost)
+    const out = Array(16).fill(0);
     if (!Array.isArray(arr)) return out;
-    for (let i = 0; i < 16; i++) out[i] = !!arr[i];
+    for (let i = 0; i < 16; i++) {
+      const v = arr[i] === true ? 1 : (Math.floor(Number(arr[i])) || 0);
+      out[i] = v < 0 ? 0 : (v > 3 ? 1 : v);
+    }
     return out;
   }
 
@@ -122,6 +127,45 @@
       hh: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
       sn: [0,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
       bd: [1,0,0,0, 0,0,1,0, 0,0,0,0, 1,0,0,0],
+    })
+  });
+
+  // REGGAETÓN (dembow): bombo en 1 y 3, dembow en caja, hi-hat corcheas
+  addPreset({
+    id: 'reggaeton',
+    name: 'Reggaetón',
+    description: 'Dembow clásico: caja sincopada con acentos, bombo en 1 y 3.',
+    bpm: 94,
+    pattern: makePattern({
+      hh: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+      sn: [0,0,2,0, 0,2,0,0, 0,0,2,0, 0,2,0,0],
+      bd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    })
+  });
+
+  // CUMBIA: bombo en 1, caja/güira en contratiempos, hi-hat corcheas
+  addPreset({
+    id: 'cumbia',
+    name: 'Cumbia',
+    description: 'Pulso de cumbia: bombo en 1, golpes en contratiempo.',
+    bpm: 90,
+    pattern: makePattern({
+      hh: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+      sn: [0,0,0,2, 0,0,0,2, 0,0,0,2, 0,0,0,2],
+      bd: [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    })
+  });
+
+  // BOSSA NOVA: surdo en bombo, clave en caja (2-3), hi-hat corcheas
+  addPreset({
+    id: 'bossa',
+    name: 'Bossa nova',
+    description: 'Bombo tipo surdo y patrón de clave en la caja.',
+    bpm: 132,
+    pattern: makePattern({
+      hh: [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+      sn: [0,0,2,0, 0,0,2,0, 2,0,0,2, 0,0,2,0],
+      bd: [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0],
     })
   });
 
