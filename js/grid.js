@@ -190,7 +190,9 @@
 
     for (let i = 0; i < steps; i++) {
       const count = document.createElement('div');
-      count.className = `grid-count ${getCountClass(i, { stepsPerBeat })}`;
+      const stepsPerBar = stepsPerBeat * beatsPerBar;
+      const barStartClass = (i > 0 && i % stepsPerBar === 0) ? ' grid-count--bar-start' : '';
+      count.className = `grid-count ${getCountClass(i, { stepsPerBeat })}${barStartClass}`;
       count.textContent = getCountToken(i, { stepsPerBeat, beatsPerBar, bars, countMode });
       count.dataset.step = String(i);
       count.dataset.role = 'count';
@@ -243,6 +245,12 @@
         if (showBeatNumbersInCells && isQuarterStep(i, stepsPerBeat)) {
           btn.classList.add('step--beat-marker');
           btn.dataset.beat = String(getBeatNumber(i, stepsPerBeat, beatsPerBar));
+        }
+
+        // Separador de compás: primera casilla de cada compás (excepto el primero)
+        const stepsPerBar = stepsPerBeat * beatsPerBar;
+        if (i > 0 && i % stepsPerBar === 0) {
+          btn.classList.add('step--bar-start');
         }
 
         if (lvl > 0) btn.classList.add('is-active');

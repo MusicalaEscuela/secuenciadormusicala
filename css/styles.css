@@ -331,9 +331,10 @@ img{
    Nota: grid.js fija 16 columnas, pero esto aguanta si mañana cambian steps.
 */
 .drum-grid{
-  min-width: calc(var(--label-col) + (var(--step-size) * 16) + (var(--step-gap) * 15));
+  --steps: 16;
+  min-width: calc(var(--label-col) + (var(--step-size) * var(--steps)) + (var(--step-gap) * (var(--steps) - 1)));
   display: grid;
-  grid-template-columns: var(--label-col) repeat(16, var(--step-size));
+  grid-template-columns: var(--label-col) repeat(var(--steps), var(--step-size));
   gap: var(--step-gap);
   align-items: center;
   position: relative;
@@ -397,6 +398,13 @@ img{
   background: rgba(244,213,108,.28);
   border-color: rgba(244,213,108,.65);
   color: rgba(122,90,5,.95);
+}
+
+/* Separador de inicio de compás (línea de barra) */
+.drum-grid .step--bar-start,
+.drum-grid .grid-count--bar-start{
+  box-shadow: -2px 0 0 0 rgba(12,65,196,.28);
+  margin-left: 4px;
 }
 
 /* Etiquetas de fila */

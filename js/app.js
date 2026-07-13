@@ -97,6 +97,7 @@
     brushSeg: $('#brushSeg'),
     meterSelect: $('#meterSelect'),
     barsSelect: $('#barsSelect'),
+    gridSubtitle: $('#gridSubtitle'),
     swingRange: $('#swingRange'),
     swingPct: $('#swingPct'),
     metroToggle: $('#metroToggle'),
@@ -453,6 +454,7 @@
     }
 
     syncGridFromState();
+    syncControlsFromState();
     lastPatternRev = -1;
     lastPatternSig = '';
     renderNotation();
@@ -550,6 +552,15 @@
     if (els.tomsToggle) els.tomsToggle.checked = !!s.showToms;
     if (els.meterSelect) els.meterSelect.value = `${s.beatsPerBar}/${s.beatUnit}`;
     if (els.barsSelect) els.barsSelect.value = String(s.bars);
+    if (els.gridSubtitle) {
+      const subdivLabel = s.stepsPerBeat === 4 ? 'semicorcheas'
+        : s.stepsPerBeat === 2 ? 'corcheas'
+        : s.stepsPerBeat === 3 ? 'tresillos'
+        : `${s.stepsPerBeat} por pulso`;
+      const barsLabel = s.bars === 1 ? '1 compás' : `${s.bars} compases`;
+      els.gridSubtitle.textContent =
+        `${s.steps} pasos (${subdivLabel}) · ${barsLabel} ${s.beatsPerBar}/${s.beatUnit}`;
+    }
     if (els.swingRange) {
       const pct = Math.round((Number(s.swing) || 0) * 100);
       els.swingRange.value = String(pct);
