@@ -348,10 +348,16 @@ img{
 .drum-grid .grid-count-label,
 .drum-grid .row-label{
   position: sticky;
-  left: 6px;
-  z-index: 3;
-  background: linear-gradient(90deg, rgba(245,246,250,1), rgba(245,246,250,.92) 70%, rgba(245,246,250,0));
-  backdrop-filter: blur(6px);
+  left: 0;
+  z-index: 10;
+  /* Fondo opaco: al desplazar con muchos compases los pasos no deben verse detrás del texto */
+  background: #f5f6fa;
+  box-shadow: 8px 0 8px -6px rgba(15,23,42,.12);
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
 }
 
 /* Fila de encabezados de conteo */
